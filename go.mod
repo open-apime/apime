@@ -12,7 +12,7 @@ require (
 	github.com/mattn/go-sqlite3 v1.14.33
 	github.com/redis/go-redis/v9 v9.17.2
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
-	go.mau.fi/whatsmeow v0.0.0-20251217143725-11cf47c62d32
+	go.mau.fi/whatsmeow v0.0.0-20260115125149-20f0273af4c4
 	go.uber.org/zap v1.27.1
 	golang.org/x/crypto v0.46.0
 	google.golang.org/protobuf v1.36.11
