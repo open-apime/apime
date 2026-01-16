@@ -61,7 +61,7 @@
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: 16px;
-    overflow: hidden;
+    overflow: visible;
     box-shadow: var(--shadow);
   }
 
@@ -189,6 +189,7 @@
   /* Tooltips */
   [data-tooltip] {
     position: relative;
+    z-index: 1;
   }
 
   [data-tooltip]::before,
@@ -198,7 +199,7 @@
     visibility: hidden;
     transition: opacity 0.2s ease, visibility 0.2s ease;
     pointer-events: none;
-    z-index: 1000;
+    z-index: 9999;
   }
 
   [data-tooltip]::before {
