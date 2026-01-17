@@ -10,7 +10,6 @@ import (
 	"io"
 )
 
-// Encrypt criptografa dados usando AES-GCM.
 func Encrypt(plaintext []byte, key string) ([]byte, error) {
 	keyHash := sha256.Sum256([]byte(key))
 	block, err := aes.NewCipher(keyHash[:])
@@ -32,7 +31,6 @@ func Encrypt(plaintext []byte, key string) ([]byte, error) {
 	return ciphertext, nil
 }
 
-// Decrypt descriptografa dados usando AES-GCM.
 func Decrypt(ciphertext []byte, key string) ([]byte, error) {
 	keyHash := sha256.Sum256([]byte(key))
 	block, err := aes.NewCipher(keyHash[:])

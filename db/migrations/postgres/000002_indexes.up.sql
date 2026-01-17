@@ -1,5 +1,3 @@
--- Índices para melhorar performance de queries
-
 CREATE INDEX IF NOT EXISTS idx_instances_status ON instances(status);
 DO $$
 BEGIN

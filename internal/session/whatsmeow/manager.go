@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	_ "github.com/mattn/go-sqlite3" // Driver SQLite3
+	_ "github.com/mattn/go-sqlite3"
 	"go.mau.fi/whatsmeow"
 	waCompanionReg "go.mau.fi/whatsmeow/proto/waCompanionReg"
 	"go.mau.fi/whatsmeow/store"
@@ -23,7 +23,6 @@ import (
 	"github.com/open-apime/apime/internal/storage/model"
 )
 
-// noopLogger implementa a interface de logger do WhatsMeow
 type noopLogger struct{}
 
 func (n *noopLogger) Debugf(msg string, args ...interface{}) {}
@@ -32,37 +31,33 @@ func (n *noopLogger) Warnf(msg string, args ...interface{})  {}
 func (n *noopLogger) Errorf(msg string, args ...interface{}) {}
 func (n *noopLogger) Sub(module string) waLog.Logger         { return n }
 
-// Mutex para proteger modificações das variáveis globais do WhatsMeow
 var (
 	deviceConfigMu sync.Mutex
 )
 
-// EventHandler interface para processar eventos do WhatsMeow
-// Agora recebe o cliente para poder baixar mídia
 type EventHandler interface {
 	Handle(ctx context.Context, instanceID string, instanceJID string, client *whatsmeow.Client, evt any)
 }
 
-// Manager gerencia sessões WhatsMeow.
 type Manager struct {
 	clients          map[string]*whatsmeow.Client
-	currentQRs       map[string]string             // QR codes atuais por instância
-	qrContexts       map[string]context.CancelFunc // Contextos QR para cancelar
+	currentQRs       map[string]string
+	qrContexts       map[string]context.CancelFunc
 	mu               sync.RWMutex
 	log              *zap.Logger
 	encKey           string
+	storageDriver    string
 	baseDir          string
 	deviceConfigRepo storage.DeviceConfigRepository
-	instanceRepo     storage.InstanceRepository             // Para atualizar status se restauração falhar
-	onStatusChange   func(instanceID string, status string) // Callback para atualizar status
-	eventHandler     EventHandler                           // Handler para eventos de webhook
+	instanceRepo     storage.InstanceRepository
+	onStatusChange   func(instanceID string, status string)
+	eventHandler     EventHandler
 }
 
-// NewManager cria um novo gerenciador de sessões.
-func NewManager(log *zap.Logger, encKey, baseDir string, deviceConfigRepo storage.DeviceConfigRepository, instanceRepo storage.InstanceRepository) *Manager {
+func NewManager(log *zap.Logger, encKey, storageDriver, baseDir string, deviceConfigRepo storage.DeviceConfigRepository, instanceRepo storage.InstanceRepository) *Manager {
 	if baseDir == "" {
-		baseDir = "/app/sessions"
-		log.Warn("WHATSAPP_SESSION_DIR não definido, usando diretório padrão do container", zap.String("dir", baseDir))
+		baseDir = "/app/data/sessions"
+		log.Warn("sessionDir não definido, usando diretório padrão do container", zap.String("dir", baseDir))
 	} else {
 		log.Info("Usando diretório de sessões configurado", zap.String("dir", baseDir))
 	}
@@ -74,20 +69,21 @@ func NewManager(log *zap.Logger, encKey, baseDir string, deviceConfigRepo storag
 		qrContexts:       make(map[string]context.CancelFunc),
 		log:              log,
 		encKey:           encKey,
+		storageDriver:    storageDriver,
 		baseDir:          baseDir,
 		deviceConfigRepo: deviceConfigRepo,
 		instanceRepo:     instanceRepo,
 	}
 }
 
-// SetStatusChangeCallback define callback para mudanças de status.
+// SetStatusChangeCallback registra o callback de status de instância.
 func (m *Manager) SetStatusChangeCallback(fn func(instanceID string, status string)) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.onStatusChange = fn
 }
 
-// SetEventHandler define o handler para eventos de webhook.
+// SetEventHandler registra o handler de eventos (ex.: webhooks).
 func (m *Manager) SetEventHandler(handler EventHandler) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -95,13 +91,10 @@ func (m *Manager) SetEventHandler(handler EventHandler) {
 	m.log.Info("event handler configurado para webhooks")
 }
 
-// CreateSession cria uma nova sessão e retorna o QR code.
-// Se forceRecreate for true, desconecta a sessão existente antes de criar uma nova.
 func (m *Manager) CreateSession(ctx context.Context, instanceID string) (string, error) {
 	return m.createSession(ctx, instanceID, false)
 }
 
-// createSession implementa a lógica de criação de sessão.
 func (m *Manager) createSession(ctx context.Context, instanceID string, forceRecreate bool) (string, error) {
 	m.mu.Lock()
 
@@ -111,7 +104,6 @@ func (m *Manager) createSession(ctx context.Context, instanceID string, forceRec
 			m.log.Warn("tentativa de criar sessão que já existe", zap.String("instance_id", instanceID))
 			return "", fmt.Errorf("sessão já existe para instância %s", instanceID)
 		}
-		// Desconectar sessão existente se forceRecreate for true
 		m.log.Info("desconectando sessão existente para recriar", zap.String("instance_id", instanceID))
 		existingClient.Disconnect()
 		delete(m.clients, instanceID)
@@ -121,17 +113,14 @@ func (m *Manager) createSession(ctx context.Context, instanceID string, forceRec
 
 	m.log.Info("criando nova sessão WhatsMeow", zap.String("instance_id", instanceID))
 
-	// Verificar se já existe arquivo SQLite com sessão válida antes de criar nova
 	dbPath := filepath.Join(m.baseDir, instanceID+".db")
 	if _, err := os.Stat(dbPath); err == nil {
-		// Arquivo existe - verificar se tem sessão válida
 		clientLog := &noopLogger{}
 		sqlitePath := fmt.Sprintf("file:%s?_foreign_keys=on", dbPath)
 		container, err := sqlstore.New(ctx, "sqlite3", sqlitePath, clientLog)
 		if err == nil {
 			deviceStore, err := container.GetFirstDevice(ctx)
 			if err == nil && deviceStore.ID != nil && !deviceStore.ID.IsEmpty() {
-				// Sessão válida existe - tentar restaurar ao invés de criar nova
 				m.log.Info("arquivo SQLite com sessão válida encontrado, tentando restaurar",
 					zap.String("instance_id", instanceID),
 				)
@@ -139,7 +128,6 @@ func (m *Manager) createSession(ctx context.Context, instanceID string, forceRec
 				if err == nil && client != nil && client.IsLoggedIn() {
 					return "", fmt.Errorf("instância já conectada, não é necessário QR code")
 				}
-				// Se restauração falhou, deletar arquivo e criar nova sessão
 				m.log.Warn("restauração falhou, deletando arquivo SQLite e criando nova sessão",
 					zap.String("instance_id", instanceID),
 				)
@@ -164,8 +152,6 @@ func (m *Manager) createSession(ctx context.Context, instanceID string, forceRec
 		return "", fmt.Errorf("whatsmeow: obter device: %w", err)
 	}
 
-	// Validar que o deviceStore não tem JID (não está logado)
-	// Se tiver JID, não deve criar nova sessão
 	if deviceStore.ID != nil && !deviceStore.ID.IsEmpty() {
 		m.log.Warn("deviceStore já tem JID, tentando restaurar ao invés de criar nova sessão",
 			zap.String("instance_id", instanceID),
@@ -175,12 +161,10 @@ func (m *Manager) createSession(ctx context.Context, instanceID string, forceRec
 		if err == nil && client != nil && client.IsLoggedIn() {
 			return "", fmt.Errorf("instância já conectada, não é necessário QR code")
 		}
-		// Se restauração falhou, deletar arquivo e continuar com criação
 		m.log.Warn("restauração falhou, deletando arquivo SQLite e criando nova sessão",
 			zap.String("instance_id", instanceID),
 		)
 		_ = os.Remove(dbPath)
-		// Recriar container e deviceStore após deletar
 		container, err = sqlstore.New(ctx, "sqlite3", sqlitePath, clientLog)
 		if err != nil {
 			m.log.Error("erro ao recriar store após deletar", zap.String("instance_id", instanceID), zap.Error(err))
@@ -193,21 +177,16 @@ func (m *Manager) createSession(ctx context.Context, instanceID string, forceRec
 		}
 	}
 
-	// Aplicar configurações de dispositivo ANTES de criar o client
 	if err := m.applyDeviceConfig(ctx, deviceStore); err != nil {
 		m.log.Warn("erro ao aplicar configurações de dispositivo", zap.String("instance_id", instanceID), zap.Error(err))
-		// Continuar mesmo com erro (usar valores padrão)
 	}
 
 	client := whatsmeow.NewClient(deviceStore, clientLog)
 
-	// Adicionar event handler para detectar conexão e desconexão
 	client.AddEventHandler(func(evt any) {
 		m.handleEvent(instanceID, evt)
 	})
 
-	// IMPORTANTE: GetQRChannel DEVE ser chamado ANTES de Connect()
-	// Criar contexto para o canal QR que não será cancelado
 	qrCtx, qrCancel := context.WithCancel(context.Background())
 	qrChan, err := client.GetQRChannel(qrCtx)
 	if err != nil {
@@ -226,18 +205,13 @@ func (m *Manager) createSession(ctx context.Context, instanceID string, forceRec
 
 	m.mu.Lock()
 	m.clients[instanceID] = client
-	// Armazenar o cancel do contexto QR para poder fechar depois
 	m.qrContexts[instanceID] = qrCancel
 	m.mu.Unlock()
 
-	// Iniciar goroutine para monitorar o canal QR em background
-	// O monitorQRChannel é o ÚNICO leitor do canal - isso evita race conditions
 	go m.monitorQRChannel(instanceID, qrChan, qrCancel)
 
 	m.log.Info("cliente conectado, aguardando QR code", zap.String("instance_id", instanceID))
 
-	// Aguardar o monitorQRChannel armazenar o primeiro QR code no map
-	// Não ler diretamente do canal para evitar race condition
 	maxWait := 30 * time.Second
 	checkInterval := 500 * time.Millisecond
 	startTime := time.Now()
@@ -253,10 +227,8 @@ func (m *Manager) createSession(ctx context.Context, instanceID string, forceRec
 			return currentQR, nil
 		}
 
-		// Se não há mais contexto QR, o canal foi fechado
 		if !hasQRContext {
 			m.log.Warn("canal QR foi fechado antes de receber código", zap.String("instance_id", instanceID))
-			// Verificar uma última vez se há QR
 			m.mu.RLock()
 			currentQR, hasQR = m.currentQRs[instanceID]
 			m.mu.RUnlock()
@@ -266,10 +238,8 @@ func (m *Manager) createSession(ctx context.Context, instanceID string, forceRec
 			return "", fmt.Errorf("whatsmeow: canal QR fechado antes de receber código")
 		}
 
-		// Verificar timeout
 		if time.Since(startTime) > maxWait {
 			m.log.Error("timeout ao aguardar primeiro QR code", zap.String("instance_id", instanceID))
-			// Verificar uma última vez
 			m.mu.RLock()
 			currentQR, hasQR = m.currentQRs[instanceID]
 			m.mu.RUnlock()
@@ -279,20 +249,16 @@ func (m *Manager) createSession(ctx context.Context, instanceID string, forceRec
 			return "", fmt.Errorf("whatsmeow: timeout ao aguardar QR code")
 		}
 
-		// Aguardar um pouco antes de verificar novamente
 		time.Sleep(checkInterval)
 	}
 }
 
-// monitorQRChannel monitora o canal QR em background para receber novos QR codes e eventos
-// Este é o ÚNICO leitor do canal QR para evitar race conditions
 func (m *Manager) monitorQRChannel(instanceID string, qrChan <-chan whatsmeow.QRChannelItem, cancel context.CancelFunc) {
 	defer cancel()
 
 	for evt := range qrChan {
 		switch evt.Event {
 		case "code":
-			// Novo QR code disponível - atualizar o QR atual
 			if evt.Code != "" {
 				m.mu.Lock()
 				m.currentQRs[instanceID] = evt.Code
@@ -304,19 +270,31 @@ func (m *Manager) monitorQRChannel(instanceID string, qrChan <-chan whatsmeow.QR
 
 		case "success":
 			m.log.Info("pareamento concluído com sucesso", zap.String("instance_id", instanceID))
-			// Enviar presence após pareamento bem-sucedido
 			m.mu.RLock()
 			client, exists := m.clients[instanceID]
 			m.mu.RUnlock()
 			if exists && client != nil {
-				// Aguardar um pouco para garantir que está conectado
 				go func() {
-					time.Sleep(2 * time.Second)
-					if client.IsLoggedIn() {
+					for attempt := 1; attempt <= 5; attempt++ {
+						time.Sleep(time.Duration(attempt*2) * time.Second)
+						if !client.IsLoggedIn() {
+							return // Cliente desconectou
+						}
 						if err := client.SendPresence(context.Background(), types.PresenceAvailable); err != nil {
-							m.log.Warn("erro ao enviar presence", zap.String("instance_id", instanceID), zap.Error(err))
+							if attempt < 5 {
+								m.log.Debug("aguardando PushName para enviar presence",
+									zap.String("instance_id", instanceID),
+									zap.Int("attempt", attempt),
+								)
+							} else {
+								// Após todas tentativas, apenas logar (não é crítico)
+								m.log.Debug("PushName não sincronizado, presence não enviado",
+									zap.String("instance_id", instanceID),
+								)
+							}
 						} else {
 							m.log.Info("presence enviado com sucesso", zap.String("instance_id", instanceID))
+							return
 						}
 					}
 				}()
@@ -343,12 +321,10 @@ func (m *Manager) monitorQRChannel(instanceID string, qrChan <-chan whatsmeow.QR
 			m.mu.Unlock()
 			return
 		default:
-			// Evento desconhecido - logar mas continuar
 			m.log.Debug("evento QR desconhecido", zap.String("instance_id", instanceID), zap.String("event", evt.Event))
 		}
 	}
 
-	// Canal foi fechado
 	m.log.Debug("canal QR foi fechado", zap.String("instance_id", instanceID))
 	m.mu.Lock()
 	delete(m.qrContexts, instanceID)
@@ -712,14 +688,20 @@ func (m *Manager) restoreSessionIfExists(ctx context.Context, instanceID string)
 	// Adicionar ao map
 	m.clients[instanceID] = client
 
-	// Enviar presence após conexão bem-sucedida
+	// Enviar presence após conexão bem-sucedida (com retry)
 	go func() {
-		time.Sleep(1 * time.Second)
-		if client.IsLoggedIn() {
+		for attempt := 1; attempt <= 5; attempt++ {
+			time.Sleep(time.Duration(attempt*2) * time.Second)
+			if !client.IsLoggedIn() {
+				return
+			}
 			if err := client.SendPresence(context.Background(), types.PresenceAvailable); err != nil {
-				m.log.Warn("erro ao enviar presence", zap.String("instance_id", instanceID), zap.Error(err))
+				if attempt == 5 {
+					m.log.Debug("PushName não sincronizado na restauração", zap.String("instance_id", instanceID))
+				}
 			} else {
 				m.log.Info("presence enviado com sucesso", zap.String("instance_id", instanceID))
+				return
 			}
 		}
 	}()
@@ -818,7 +800,6 @@ func (m *Manager) GetDiagnostics(instanceID string) interface{} {
 		diag.ClientConnected = client.IsLoggedIn()
 	}
 
-	// Verificar arquivo SQLite
 	dbPath := filepath.Join(m.baseDir, instanceID+".db")
 	if fileInfo, err := os.Stat(dbPath); err == nil {
 		diag.HasSQLiteFile = true
@@ -826,7 +807,6 @@ func (m *Manager) GetDiagnostics(instanceID string) interface{} {
 		diag.SQLiteFileSize = fileInfo.Size()
 		diag.SQLiteFileModTime = fileInfo.ModTime()
 
-		// Tentar obter informações do device store
 		ctx := context.Background()
 		clientLog := &noopLogger{}
 		sqlitePath := fmt.Sprintf("file:%s?_foreign_keys=on", dbPath)
@@ -846,7 +826,6 @@ func (m *Manager) GetDiagnostics(instanceID string) interface{} {
 	return diag
 }
 
-// SaveSessionBlob salva os dados da sessão de forma criptografada.
 func (m *Manager) SaveSessionBlob(instanceID string) ([]byte, error) {
 	m.mu.RLock()
 	_, exists := m.clients[instanceID]
@@ -856,8 +835,6 @@ func (m *Manager) SaveSessionBlob(instanceID string) ([]byte, error) {
 		return nil, fmt.Errorf("sessão não encontrada")
 	}
 
-	// Serializar device store (simplificado - em produção, use método adequado)
-	// Por enquanto, retornamos um placeholder
 	data := []byte(fmt.Sprintf("session:%s", instanceID))
 
 	encrypted, err := crypto.Encrypt(data, m.encKey)
@@ -892,10 +869,6 @@ func mapPlatformType(platformType string) *waCompanionReg.DeviceProps_PlatformTy
 	}
 }
 
-// applyDeviceConfig aplica as configurações de dispositivo do banco de dados
-// As configurações (DeviceProps, BaseClientPayload) são aplicadas de forma thread-safe
-// apenas durante o registro inicial, sem modificar as variáveis globais permanentemente
-// NOTA: PushName não é mais alterado para manter o comportamento padrão do whatsmeow
 func (m *Manager) applyDeviceConfig(ctx context.Context, deviceStore *store.Device) error {
 	if m.deviceConfigRepo == nil {
 		return nil
@@ -903,14 +876,10 @@ func (m *Manager) applyDeviceConfig(ctx context.Context, deviceStore *store.Devi
 
 	config, err := m.deviceConfigRepo.Get(ctx)
 	if err != nil {
-		// Se erro ao buscar, usar valores padrão
 		m.log.Warn("erro ao buscar configurações, usando padrão", zap.Error(err))
 		return nil
 	}
 
-	// Aplicar outras configurações (DeviceProps) apenas durante registro
-	// usando mutex para evitar race conditions entre instâncias
-	// Isso é feito apenas se o deviceStore não tem JID (registro inicial)
 	if deviceStore.ID == nil || deviceStore.ID.IsEmpty() {
 		m.applyDevicePropsForRegistration(ctx, config)
 	}
@@ -923,27 +892,18 @@ func (m *Manager) applyDeviceConfig(ctx context.Context, deviceStore *store.Devi
 	return nil
 }
 
-// applyDevicePropsForRegistration aplica DeviceProps de forma thread-safe
-// apenas durante o registro inicial (quando não há JID)
-// Usa mutex para evitar conflitos entre múltiplas instâncias tentando registrar simultaneamente
-// IMPORTANTE: As variáveis globais são modificadas temporariamente e restauradas após o registro
 func (m *Manager) applyDevicePropsForRegistration(ctx context.Context, config model.DeviceConfig) {
-	// Proteger modificação das variáveis globais (evitar race conditions)
 	deviceConfigMu.Lock()
 	defer deviceConfigMu.Unlock()
 
-	// Salvar valores originais para restaurar depois
 	originalPlatformType := store.DeviceProps.PlatformType
 	originalOS := store.DeviceProps.Os
 	originalVersionPrimary := store.DeviceProps.Version.Primary
 	originalVersionSecondary := store.DeviceProps.Version.Secondary
 	originalVersionTertiary := store.DeviceProps.Version.Tertiary
 
-	// Usar SetOSInfo para definir o OS (já existe no WhatsMeow)
 	store.SetOSInfo(config.OSName, [3]uint32{1, 0, 0})
 
-	// Modificar DeviceProps (usado no DevicePairingData durante registro)
-	// O PlatformType define o ícone que aparece no WhatsApp
 	store.DeviceProps.PlatformType = mapPlatformType(config.PlatformType)
 
 	m.log.Debug("configurações globais aplicadas para registro",
@@ -951,16 +911,12 @@ func (m *Manager) applyDevicePropsForRegistration(ctx context.Context, config mo
 		zap.String("os_name", config.OSName),
 	)
 
-	// Aguardar um pouco para garantir que o registro use essas configurações
-	// Depois restaurar os valores originais
-	// O tempo de 10 segundos deve ser suficiente para o registro iniciar e usar as configurações
 	go func() {
 		time.Sleep(10 * time.Second)
 
 		deviceConfigMu.Lock()
 		defer deviceConfigMu.Unlock()
 
-		// Restaurar valores originais
 		store.DeviceProps.PlatformType = originalPlatformType
 		store.DeviceProps.Os = originalOS
 		if store.DeviceProps.Version != nil {
@@ -1008,12 +964,18 @@ func (m *Manager) handleEvent(instanceID string, evt any) {
 		m.mu.RUnlock()
 		if exists && client != nil {
 			go func() {
-				time.Sleep(1 * time.Second)
-				if client.IsLoggedIn() {
+				for attempt := 1; attempt <= 5; attempt++ {
+					time.Sleep(time.Duration(attempt*2) * time.Second)
+					if !client.IsLoggedIn() {
+						return
+					}
 					if err := client.SendPresence(context.Background(), types.PresenceAvailable); err != nil {
-						m.log.Warn("erro ao enviar presence", zap.String("instance_id", instanceID), zap.Error(err))
+						if attempt == 5 {
+							m.log.Debug("PushName não sincronizado no Connected", zap.String("instance_id", instanceID))
+						}
 					} else {
 						m.log.Info("presence enviado após conexão", zap.String("instance_id", instanceID))
+						return
 					}
 				}
 			}()

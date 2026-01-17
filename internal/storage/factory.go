@@ -4,12 +4,11 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/open-apime/apime/internal/config"
-	"github.com/open-apime/apime/internal/storage/memory"
 	"github.com/open-apime/apime/internal/storage/postgres"
 	"github.com/open-apime/apime/internal/storage/redis"
+	"github.com/open-apime/apime/internal/storage/sqlite"
 )
 
-// Repositories agrupa todos os repositórios.
 type Repositories struct {
 	Instance     InstanceRepository
 	Message      MessageRepository
@@ -21,13 +20,11 @@ type Repositories struct {
 	WebhookQueue *redis.Queue
 }
 
-// NewRepositories cria repositórios baseado no driver configurado.
 func NewRepositories(cfg config.Config, log *zap.Logger) (*Repositories, error) {
 	log.Info("inicializando repositórios",
 		zap.String("driver", cfg.Storage.Driver),
 	)
 
-	// Inicializar Redis (sempre necessário para webhooks)
 	log.Debug("criando conexão com Redis")
 	redisClient, err := redis.New(cfg.Redis, log)
 	if err != nil {
@@ -38,6 +35,26 @@ func NewRepositories(cfg config.Config, log *zap.Logger) (*Repositories, error) 
 	log.Info("Redis conectado e fila de webhooks criada")
 
 	switch cfg.Storage.Driver {
+	case "sqlite", "":
+		log.Debug("criando conexão com SQLite")
+		db, err := sqlite.New(cfg.Storage.DataDir, log)
+		if err != nil {
+			log.Error("erro ao conectar com SQLite", zap.Error(err))
+			return nil, err
+		}
+
+		log.Info("repositórios SQLite criados com sucesso", zap.String("data_dir", cfg.Storage.DataDir))
+		return &Repositories{
+			Instance:     sqlite.NewInstanceRepository(db),
+			Message:      sqlite.NewMessageRepository(db),
+			EventLog:     sqlite.NewEventLogRepository(db),
+			User:         sqlite.NewUserRepository(db),
+			APIToken:     sqlite.NewAPITokenRepository(db),
+			DeviceConfig: sqlite.NewDeviceConfigRepository(db),
+			RedisClient:  redisClient,
+			WebhookQueue: webhookQueue,
+		}, nil
+
 	case "postgres":
 		log.Debug("criando conexão com PostgreSQL")
 		db, err := postgres.New(cfg.DB, log)
@@ -54,19 +71,6 @@ func NewRepositories(cfg config.Config, log *zap.Logger) (*Repositories, error) 
 			User:         postgres.NewUserRepository(db),
 			APIToken:     postgres.NewAPITokenRepository(db),
 			DeviceConfig: postgres.NewDeviceConfigRepository(db),
-			RedisClient:  redisClient,
-			WebhookQueue: webhookQueue,
-		}, nil
-
-	case "memory", "":
-		log.Info("usando repositórios em memória")
-		return &Repositories{
-			Instance:     memory.NewInstanceStore(),
-			Message:      memory.NewMessageStore(),
-			EventLog:     memory.NewEventLogStore(),
-			User:         memory.NewUserStore(),
-			APIToken:     memory.NewAPITokenStore(),
-			DeviceConfig: memory.NewDeviceConfigStore(),
 			RedisClient:  redisClient,
 			WebhookQueue: webhookQueue,
 		}, nil

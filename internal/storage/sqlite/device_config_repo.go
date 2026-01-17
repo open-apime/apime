@@ -1,11 +1,11 @@
-package postgres
+package sqlite
 
 import (
 	"context"
+	"database/sql"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 
 	"github.com/open-apime/apime/internal/storage/model"
 )
@@ -27,12 +27,13 @@ func (r *deviceConfigRepo) Get(ctx context.Context) (model.DeviceConfig, error) 
 	`
 
 	var config model.DeviceConfig
-	err := r.db.Pool.QueryRow(ctx, query).Scan(
-		&config.ID, &config.PlatformType,
-		&config.OSName, &config.CreatedAt, &config.UpdatedAt,
-	)
+	var createdAt, updatedAt string
 
-	if err == pgx.ErrNoRows {
+	err := r.db.Conn.QueryRowContext(ctx, query).Scan(
+		&config.ID, &config.PlatformType,
+		&config.OSName, &createdAt, &updatedAt,
+	)
+	if err == sql.ErrNoRows {
 		return model.DeviceConfig{
 			ID:           uuid.NewString(),
 			PlatformType: "DESKTOP",
@@ -41,26 +42,18 @@ func (r *deviceConfigRepo) Get(ctx context.Context) (model.DeviceConfig, error) 
 			UpdatedAt:    time.Now(),
 		}, nil
 	}
-
 	if err != nil {
 		return model.DeviceConfig{}, err
 	}
+
+	config.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
+	config.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAt)
 
 	return config, nil
 }
 
 func (r *deviceConfigRepo) Update(ctx context.Context, config model.DeviceConfig) (model.DeviceConfig, error) {
 	config.UpdatedAt = time.Now()
-
-	query := `
-		INSERT INTO device_config (id, platform_type, os_name, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5)
-		ON CONFLICT (id) DO UPDATE
-		SET platform_type = EXCLUDED.platform_type,
-		    os_name = EXCLUDED.os_name,
-		    updated_at = EXCLUDED.updated_at
-		RETURNING id, platform_type, os_name, created_at, updated_at
-	`
 
 	if config.ID == "" {
 		config.ID = "00000000-0000-0000-0000-000000000001"
@@ -69,14 +62,15 @@ func (r *deviceConfigRepo) Update(ctx context.Context, config model.DeviceConfig
 		config.CreatedAt = time.Now()
 	}
 
-	err := r.db.Pool.QueryRow(ctx, query,
-		config.ID, config.PlatformType,
-		config.OSName, config.CreatedAt, config.UpdatedAt,
-	).Scan(
-		&config.ID, &config.PlatformType,
-		&config.OSName, &config.CreatedAt, &config.UpdatedAt,
-	)
+	query := `
+		INSERT OR REPLACE INTO device_config (id, platform_type, os_name, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?)
+	`
 
+	_, err := r.db.Conn.ExecContext(ctx, query,
+		config.ID, config.PlatformType,
+		config.OSName, config.CreatedAt.Format(time.RFC3339), config.UpdatedAt.Format(time.RFC3339),
+	)
 	if err != nil {
 		return model.DeviceConfig{}, err
 	}

@@ -7,7 +7,6 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
-// New cria um logger baseado no ambiente informado.
 func New(env, level string) (*zap.Logger, error) {
 	cfg := zap.Config{
 		Encoding:         "json",

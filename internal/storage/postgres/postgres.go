@@ -10,13 +10,11 @@ import (
 	"github.com/open-apime/apime/internal/config"
 )
 
-// DB encapsula a conexão PostgreSQL.
 type DB struct {
 	Pool *pgxpool.Pool
 	log  *zap.Logger
 }
 
-// New cria uma nova conexão com PostgreSQL.
 func New(cfg config.DatabaseConfig, log *zap.Logger) (*DB, error) {
 	dsn := cfg.DSN()
 
@@ -39,7 +37,6 @@ func New(cfg config.DatabaseConfig, log *zap.Logger) (*DB, error) {
 	return &DB{Pool: pool, log: log}, nil
 }
 
-// Close fecha a conexão.
 func (db *DB) Close() {
 	if db.Pool != nil {
 		db.Pool.Close()

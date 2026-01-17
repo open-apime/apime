@@ -16,12 +16,10 @@ import (
 	"github.com/open-apime/apime/internal/storage/redis"
 )
 
-// InstanceChecker verifica se uma instância tem webhook configurado
 type InstanceChecker interface {
 	HasWebhook(ctx context.Context, instanceID string) bool
 }
 
-// EventHandler processa eventos do WhatsMeow e enfileira para webhooks.
 type EventHandler struct {
 	queue           *redis.Queue
 	log             *zap.Logger
@@ -30,7 +28,6 @@ type EventHandler struct {
 	instanceChecker InstanceChecker
 }
 
-// NewEventHandler cria um novo event handler.
 func NewEventHandler(queue *redis.Queue, log *zap.Logger, mediaStorage *media.Storage, apiBaseURL string, instanceChecker InstanceChecker) *EventHandler {
 	return &EventHandler{
 		queue:           queue,
@@ -41,10 +38,7 @@ func NewEventHandler(queue *redis.Queue, log *zap.Logger, mediaStorage *media.St
 	}
 }
 
-// Handle processa um evento do WhatsMeow.
-// Agora recebe o cliente para poder baixar mídia.
 func (h *EventHandler) Handle(ctx context.Context, instanceID string, instanceJID string, client *whatsmeow.Client, evt any) {
-	// Verificar se a instância tem webhook configurado antes de processar
 	if h.instanceChecker != nil && !h.instanceChecker.HasWebhook(ctx, instanceID) {
 		h.log.Info("evento ignorado: instância sem webhook configurado", zap.String("instance", instanceID))
 		return
@@ -52,10 +46,8 @@ func (h *EventHandler) Handle(ctx context.Context, instanceID string, instanceJI
 
 	h.log.Debug("processando evento para webhook", zap.String("instance", instanceID), zap.String("type", fmt.Sprintf("%T", evt)))
 
-	// Normalizar evento para formato padrão (agora com download de mídia)
 	normalized := h.normalizeEvent(ctx, instanceID, client, evt)
 
-	// Adicionar JID da instância ao payload se disponível
 	if instanceJID != "" {
 		normalized["instanceJID"] = instanceJID
 	}
@@ -68,7 +60,6 @@ func (h *EventHandler) Handle(ctx context.Context, instanceID string, instanceJI
 		CreatedAt:  time.Now(),
 	}
 
-	// Enfileirar evento
 	if err := h.queue.Enqueue(ctx, event); err != nil {
 		h.log.Error("event handler: erro ao enfileirar", zap.Error(err))
 		return
@@ -85,8 +76,6 @@ func (h *EventHandler) Handle(ctx context.Context, instanceID string, instanceJI
 	)
 }
 
-// normalizeEvent normaliza evento do WhatsMeow para formato padrão.
-// Agora baixa mídia localmente e fornece URL própria.
 func (h *EventHandler) normalizeEvent(ctx context.Context, instanceID string, client *whatsmeow.Client, evt any) map[string]interface{} {
 	result := make(map[string]interface{})
 

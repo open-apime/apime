@@ -31,7 +31,6 @@ import (
 	"github.com/open-apime/apime/internal/webhook/delivery"
 )
 
-// instanceCheckerAdapter adapta o repositório de instâncias para a interface InstanceChecker
 type instanceCheckerAdapter struct {
 	repo storage.InstanceRepository
 }
@@ -53,11 +52,15 @@ func main() {
 	}
 	defer logr.Sync()
 
+	sessionDir := filepath.Join(cfg.Storage.DataDir, "sessions")
+	mediaDir := filepath.Join(cfg.Storage.DataDir, "media")
+
 	logr.Info("iniciando aplicação",
 		zap.String("env", cfg.App.Env),
 		zap.String("log_level", cfg.Log.Level),
 		zap.String("port", cfg.App.Port),
-		zap.String("wa_session_dir", cfg.WhatsApp.SessionDir),
+		zap.String("db_driver", cfg.Storage.Driver),
+		zap.String("data_dir", cfg.Storage.DataDir),
 	)
 
 	repos, err := storage.NewRepositories(cfg, logr)
@@ -65,12 +68,10 @@ func main() {
 		log.Fatalf("storage: %v", err)
 	}
 
-	// Inicializar session manager do WhatsApp
-	sessionManager := whatsmeow.NewManager(logr, cfg.WhatsApp.SessionKeyEnc, cfg.WhatsApp.SessionDir, repos.DeviceConfig, repos.Instance)
+	sessionManager := whatsmeow.NewManager(logr, cfg.WhatsApp.SessionKeyEnc, cfg.Storage.Driver, sessionDir, repos.DeviceConfig, repos.Instance)
 
 	instanceService := instance.NewServiceWithSessionMessagesAndEventLogs(repos.Instance, repos.Message, repos.EventLog, sessionManager)
 
-	// Configurar callback para atualizar status quando conectar/desconectar
 	sessionManager.SetStatusChangeCallback(func(instanceID string, status string) {
 		ctx := context.Background()
 		var instanceStatus model.InstanceStatus
@@ -87,7 +88,6 @@ func main() {
 		}
 	})
 
-	mediaDir := filepath.Join(cfg.WhatsApp.SessionDir, "media")
 	mediaStorage, err := media.NewStorage(mediaDir, 2*time.Hour, logr)
 	if err != nil {
 		log.Fatalf("media storage: %v", err)
@@ -110,8 +110,6 @@ func main() {
 	logr.Info("restaurando sessões...")
 	instances, err := instanceService.List(context.Background())
 	if err == nil {
-		// Restaurar TODAS as instâncias que existem no banco
-		// O WhatsMeow vai verificar se há arquivo SQLite válido
 		var allInstanceIDs []string
 		for _, inst := range instances {
 			allInstanceIDs = append(allInstanceIDs, inst.ID)
@@ -121,7 +119,6 @@ func main() {
 				zap.Int("total", len(allInstanceIDs)),
 			)
 			sessionManager.RestoreAllSessions(context.Background(), allInstanceIDs)
-			// Aguardar um pouco para as restaurações iniciarem
 			time.Sleep(3 * time.Second)
 		} else {
 			logr.Info("nenhuma instância encontrada para restaurar")
@@ -147,11 +144,11 @@ func main() {
 	healthHandler := handler.NewHealthHandler()
 
 	rateLimitOpts := middleware.RateLimitOption{
-		Enabled:     cfg.RateLimit.Enabled,
-		Requests:    cfg.RateLimit.Requests,
-		Window:      time.Duration(cfg.RateLimit.WindowSeconds) * time.Second,
-		Prefix:      cfg.RateLimit.RedisPrefix,
-		Logger:      logr,
+		Enabled:  cfg.RateLimit.Enabled,
+		Requests: cfg.RateLimit.Requests,
+		Window:   time.Duration(cfg.RateLimit.WindowSeconds) * time.Second,
+		Prefix:   cfg.RateLimit.RedisPrefix,
+		Logger:   logr,
 	}
 	if repos.RedisClient != nil {
 		rateLimitOpts.RedisClient = repos.RedisClient.RDB()
@@ -176,7 +173,7 @@ func main() {
 	})
 
 	if cfg.Dashboard.Enabled {
-		if err := dashboard.Register(router, dashboard.Options{
+		dashboard.Register(router, dashboard.Options{
 			AuthService:         authService,
 			InstanceService:     instanceService,
 			UserService:         userService,
@@ -188,9 +185,7 @@ func main() {
 			BaseURL:             cfg.App.BaseURL,
 			Logger:              logr,
 			EnableDashboard:     true,
-		}); err != nil {
-			log.Fatalf("dashboard: %v", err)
-		}
+		})
 	} else {
 		logr.Info("dashboard desativado via configuração")
 	}
@@ -204,7 +199,6 @@ func main() {
 
 	errCh := make(chan error, 1)
 	go func() {
-		logr.Debug("iniciando goroutine do servidor")
 		if err := application.Run(context.Background()); err != nil {
 			logr.Error("servidor finalizado com erro", zap.Error(err))
 			errCh <- err
@@ -229,13 +223,9 @@ func main() {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	// Encerrar pool de webhooks
-	if webhookPool != nil {
-		webhookPool.Stop()
-		logr.Info("webhook pool encerrada")
-	}
+	webhookPool.Stop()
+	logr.Info("webhook pool encerrada")
 
-	// Fechar conexão Redis
 	if repos.RedisClient != nil {
 		if err := repos.RedisClient.Close(); err != nil {
 			logr.Warn("erro ao fechar conexão Redis", zap.Error(err))

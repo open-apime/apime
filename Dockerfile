@@ -2,14 +2,12 @@ FROM golang:1.24 AS builder
 
 WORKDIR /app
 
-# Instalar dependências do sqlite3
 RUN apt-get update && apt-get install -y \
     gcc \
     libc6-dev \
     && rm -rf /var/lib/apt/lists/*
 
 COPY go.mod go.sum ./
-# Baixar dependências
 RUN go mod download
 
 COPY . .
@@ -18,7 +16,6 @@ RUN CGO_ENABLED=1 GOOS=linux go build -o api ./cmd/api && \
 
 FROM debian:bookworm-slim
 
-# Instalar dependências do sqlite3 no runtime
 RUN apt-get update && apt-get install -y \
     ca-certificates \
     libc6 \

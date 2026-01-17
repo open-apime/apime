@@ -20,37 +20,24 @@ import (
 	"github.com/open-apime/apime/internal/storage/model"
 )
 
-// normalizeJID normaliza um JID, adicionando @s.whatsapp.net apenas para números de telefone
-// Grupos e outros tipos devem ser passados com o JID completo (ex: GROUP_ID@g.us)
-// Para números brasileiros, remove o 9º dígito (9) de números de celular se presente
 func normalizeJID(jidStr string) string {
 	jidStr = strings.TrimSpace(jidStr)
 
-	// Se for grupo ou outro tipo que não seja @s.whatsapp.net, retorna como está
 	if strings.Contains(jidStr, "@") {
-		// Se for @s.whatsapp.net, extrai o número e normaliza
 		if strings.HasSuffix(jidStr, "@s.whatsapp.net") {
 			phone := strings.TrimSuffix(jidStr, "@s.whatsapp.net")
 			normalized := normalizeBrazilianPhone(phone)
 			return normalized + "@s.whatsapp.net"
 		}
-		// Outros tipos (@g.us, etc.) retorna como está
 		return jidStr
 	}
 
-	// Normalizar número brasileiro: remover o 9º dígito de celulares
 	normalized := normalizeBrazilianPhone(jidStr)
 
-	// Se for apenas número (sem @), assume número de telefone e adiciona @s.whatsapp.net
 	return normalized + "@s.whatsapp.net"
 }
 
-// normalizeBrazilianPhone normaliza números de telefone brasileiros
-// Remove o 9º dígito (9) de números de celular se presente
-// Formato esperado: 55 + DDD (2 dígitos) + número (8 ou 9 dígitos)
-// Exemplo: 5511999999999 -> 551199999999 (remove o 9º dígito)
 func normalizeBrazilianPhone(phone string) string {
-	// Remove caracteres não numéricos
 	digits := strings.Map(func(r rune) rune {
 		if r >= '0' && r <= '9' {
 			return r
@@ -58,31 +45,24 @@ func normalizeBrazilianPhone(phone string) string {
 		return -1
 	}, phone)
 
-	// Verifica se é número brasileiro (começa com 55)
 	if len(digits) < 4 || !strings.HasPrefix(digits, "55") {
-		return phone // Não é brasileiro, retorna original
+		return phone
 	}
 
-	// Verifica se tem pelo menos DDD + 9 dígitos (55 + 2 + 9 = 13 dígitos)
 	if len(digits) < 13 {
-		return phone // Muito curto, retorna original
+		return phone
 	}
 
-	// Extrai: 55 (país) + DDD (2 dígitos) + número (resto)
-	// Exemplo: 5511999999999 -> país=55, ddd=11, numero=999999999
-	country := digits[0:2]  // 55
-	areaCode := digits[2:4] // DDD (11-99)
-	number := digits[4:]    // Número restante
+	country := digits[0:2]
+	areaCode := digits[2:4]
+	number := digits[4:]
 
-	// Se o número tem 9 dígitos e começa com 9, remove o primeiro 9
-	// Isso normaliza para o formato antigo que o WhatsApp pode esperar
 	if len(number) == 9 && number[0] == '9' {
-		// Remove o primeiro dígito (9)
 		normalizedNumber := number[1:]
 		return country + areaCode + normalizedNumber
 	}
 
-	return phone // Não precisa normalizar
+	return phone
 }
 
 var (
@@ -142,25 +122,22 @@ type SendInput struct {
 	Type       string
 	Text       string
 	MediaData  []byte
-	MediaType  string // mime type
+	MediaType  string
 	Caption    string
 	FileName   string
-	Seconds    int  // Adicionado duração em segundos
-	PTT        bool // Adicionado flag PTT
+	Seconds    int
+	PTT        bool
 }
 
-// Send envia uma mensagem diretamente (síncrono)
 func (s *Service) Send(ctx context.Context, input SendInput) (model.Message, error) {
 	if s.sessionMgr == nil {
 		return model.Message{}, errors.New("session manager não configurado")
 	}
 
-	// Validar input
 	if input.InstanceID == "" || input.To == "" {
 		return model.Message{}, ErrInvalidPayload
 	}
 
-	// Verificar se instância está ativa
 	instance, err := s.instanceRepo.GetByID(ctx, input.InstanceID)
 	if err != nil {
 		return model.Message{}, fmt.Errorf("instância não encontrada: %w", err)
@@ -170,11 +147,8 @@ func (s *Service) Send(ctx context.Context, input SendInput) (model.Message, err
 		return model.Message{}, ErrInstanceNotConnected
 	}
 
-	// Obter cliente WhatsMeow
 	client, err := s.sessionMgr.GetClient(input.InstanceID)
 	if err != nil {
-		// Se não conseguiu obter o cliente, atualizar status da instância para error
-		// para refletir o estado real
 		ctxUpdate := context.Background()
 		if instToUpdate, fetchErr := s.instanceRepo.GetByID(ctxUpdate, input.InstanceID); fetchErr == nil {
 			instToUpdate.Status = model.InstanceStatusError
@@ -183,9 +157,7 @@ func (s *Service) Send(ctx context.Context, input SendInput) (model.Message, err
 		return model.Message{}, fmt.Errorf("cliente não encontrado: %w", err)
 	}
 
-	// Verificar se o cliente está realmente logado
 	if !client.IsLoggedIn() {
-		// Atualizar status no banco para refletir o estado real
 		ctxUpdate := context.Background()
 		if instToUpdate, fetchErr := s.instanceRepo.GetByID(ctxUpdate, input.InstanceID); fetchErr == nil {
 			instToUpdate.Status = model.InstanceStatusError
@@ -194,16 +166,13 @@ func (s *Service) Send(ctx context.Context, input SendInput) (model.Message, err
 		return model.Message{}, ErrInstanceNotConnected
 	}
 
-	// Normalizar JID do destinatário (adiciona @s.whatsapp.net se for apenas número)
 	normalizedTo := normalizeJID(input.To)
 
-	// Parsear JID do destinatário
 	toJID, err := types.ParseJID(normalizedTo)
 	if err != nil {
 		return model.Message{}, fmt.Errorf("%w: %s", ErrInvalidJID, normalizedTo)
 	}
 
-	// Construir mensagem baseado no tipo
 	var waMessage *waE2E.Message
 	var messageType string
 	var payload string

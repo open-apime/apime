@@ -10,13 +10,11 @@ import (
 	"github.com/open-apime/apime/internal/config"
 )
 
-// Client encapsula a conexão Redis.
 type Client struct {
 	rdb *redis.Client
 	log *zap.Logger
 }
 
-// New cria uma nova conexão com Redis.
 func New(cfg config.RedisConfig, log *zap.Logger) (*Client, error) {
 	rdb := redis.NewClient(&redis.Options{
 		Addr:     cfg.Addr,
@@ -34,12 +32,10 @@ func New(cfg config.RedisConfig, log *zap.Logger) (*Client, error) {
 	return &Client{rdb: rdb, log: log}, nil
 }
 
-// Close fecha a conexão.
 func (c *Client) Close() error {
 	return c.rdb.Close()
 }
 
-// RDB retorna o cliente Redis subjacente.
 func (c *Client) RDB() *redis.Client {
 	return c.rdb
 }

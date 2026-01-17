@@ -8,7 +8,6 @@ import (
 	userSvc "github.com/open-apime/apime/internal/service/user"
 )
 
-// RequireAdmin cria um middleware que exige que o usuário seja admin
 func RequireAdmin(userService *userSvc.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID, exists := c.Get("userID")
@@ -28,13 +27,11 @@ func RequireAdmin(userService *userSvc.Service) gin.HandlerFunc {
 			return
 		}
 
-		// Adiciona informações do usuário ao contexto
 		c.Set("userRole", user.Role)
 		c.Next()
 	}
 }
 
-// RequireRole cria um middleware que exige que o usuário tenha um role específico
 func RequireRole(userService *userSvc.Service, requiredRole string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID, exists := c.Get("userID")
@@ -54,13 +51,11 @@ func RequireRole(userService *userSvc.Service, requiredRole string) gin.HandlerF
 			return
 		}
 
-		// Adiciona informações do usuário ao contexto
 		c.Set("userRole", user.Role)
 		c.Next()
 	}
 }
 
-// AddUserInfo adiciona informações do usuário ao contexto para endpoints que precisam
 func AddUserInfo(userService *userSvc.Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userID, exists := c.Get("userID")
@@ -71,12 +66,10 @@ func AddUserInfo(userService *userSvc.Service) gin.HandlerFunc {
 
 		user, err := userService.Get(c.Request.Context(), userID.(string))
 		if err != nil {
-			// Se não encontrar o usuário, continua sem adicionar info
 			c.Next()
 			return
 		}
 
-		// Adiciona informações do usuário ao contexto
 		c.Set("userRole", user.Role)
 		c.Set("userEmail", user.Email)
 		c.Next()

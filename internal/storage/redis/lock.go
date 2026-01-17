@@ -9,7 +9,6 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-// Lock representa um lock distribuído.
 type Lock struct {
 	client *Client
 	key    string
@@ -17,7 +16,6 @@ type Lock struct {
 	ttl    time.Duration
 }
 
-// Acquire tenta adquirir o lock. Retorna true se adquirido com sucesso.
 func (l *Lock) Acquire(ctx context.Context) (bool, error) {
 	l.value = uuid.New().String()
 	acquired, err := l.client.rdb.SetNX(ctx, l.key, l.value, l.ttl).Result()
@@ -27,7 +25,6 @@ func (l *Lock) Acquire(ctx context.Context) (bool, error) {
 	return acquired, nil
 }
 
-// Release libera o lock.
 func (l *Lock) Release(ctx context.Context) error {
 	script := `
 		if redis.call("get", KEYS[1]) == ARGV[1] then
@@ -43,7 +40,6 @@ func (l *Lock) Release(ctx context.Context) error {
 	return nil
 }
 
-// NewLock cria um novo lock distribuído.
 func NewLock(client *Client, key string, ttl time.Duration) *Lock {
 	return &Lock{
 		client: client,

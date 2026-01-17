@@ -14,14 +14,12 @@ import (
 	"go.uber.org/zap"
 )
 
-// Delivery entrega eventos para webhooks.
 type Delivery struct {
 	client     *http.Client
 	log        *zap.Logger
 	maxRetries int
 }
 
-// NewDelivery cria um novo delivery.
 func NewDelivery(log *zap.Logger, maxRetries int) *Delivery {
 	return &Delivery{
 		client: &http.Client{
@@ -32,7 +30,6 @@ func NewDelivery(log *zap.Logger, maxRetries int) *Delivery {
 	}
 }
 
-// Deliver entrega um evento para um webhook com retries.
 func (d *Delivery) Deliver(ctx context.Context, url string, secret string, event map[string]interface{}) error {
 	payload, err := json.Marshal(event)
 	if err != nil {
@@ -80,14 +77,12 @@ func (d *Delivery) Deliver(ctx context.Context, url string, secret string, event
 	return fmt.Errorf("delivery: falhou após %d tentativas: %w", d.maxRetries+1, lastErr)
 }
 
-// generateSignature gera assinatura HMAC-SHA256.
 func (d *Delivery) generateSignature(payload []byte, secret string) string {
 	mac := hmac.New(sha256.New, []byte(secret))
 	mac.Write(payload)
 	return "sha256=" + hex.EncodeToString(mac.Sum(nil))
 }
 
-// VerifySignature verifica assinatura HMAC.
 func (d *Delivery) VerifySignature(payload []byte, signature, secret string) bool {
 	expected := d.generateSignature(payload, secret)
 	return hmac.Equal([]byte(signature), []byte(expected))

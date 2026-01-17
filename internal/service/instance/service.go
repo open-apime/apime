@@ -59,7 +59,7 @@ type UpdateInput struct {
 	Name          string
 	WebhookURL    string
 	WebhookSecret string
-	OwnerUserID   string // para verificação de autorização
+	OwnerUserID   string
 }
 
 func (s *Service) Create(ctx context.Context, input CreateInput) (model.Instance, error) {
@@ -114,7 +114,6 @@ func (s *Service) GetByUser(ctx context.Context, id string, userID string, userR
 		return model.Instance{}, err
 	}
 
-	// Admin pode ver qualquer instância, user só pode ver as próprias
 	if userRole != "admin" && instance.OwnerUserID != userID {
 		return model.Instance{}, storage.ErrNotFound
 	}
@@ -145,7 +144,6 @@ func (s *Service) UpdateByUser(ctx context.Context, id string, input UpdateInput
 		return model.Instance{}, err
 	}
 
-	// Verificar permissão: admin pode editar qualquer instância, user só as próprias
 	if input.OwnerUserID != "admin" && inst.OwnerUserID != input.OwnerUserID {
 		return model.Instance{}, storage.ErrNotFound
 	}
@@ -176,13 +174,11 @@ func (s *Service) GetQR(ctx context.Context, id string) (string, error) {
 		return "", errors.New("session manager não configurado")
 	}
 
-	// Verificar se a instância existe
 	_, err := s.repo.GetByID(ctx, id)
 	if err != nil {
 		return "", err
 	}
 
-	// GetQR cria a sessão automaticamente se não existir
 	return s.session.GetQR(ctx, id)
 }
 
@@ -221,17 +217,15 @@ func (s *Service) Delete(ctx context.Context, id string) error {
 
 	// Deletar sessão completamente (incluindo arquivo SQLite) se existir
 	if s.session != nil {
-		_ = s.session.DeleteSession(id) // Ignorar erro se não existir
+		_ = s.session.DeleteSession(id)
 	}
 
-	// Deletar mensagens associadas antes de deletar a instância
 	if s.messageRepo != nil {
 		if err := s.messageRepo.DeleteByInstanceID(ctx, id); err != nil {
 			return err
 		}
 	}
 
-	// Deletar logs de eventos associados antes de deletar a instância
 	if s.eventLogRepo != nil {
 		if err := s.eventLogRepo.DeleteByInstanceID(ctx, id); err != nil {
 			return err
@@ -247,24 +241,20 @@ func (s *Service) DeleteByUser(ctx context.Context, id string, userID string, us
 		return err
 	}
 
-	// Verificar permissão: admin pode deletar qualquer instância, user só as próprias
 	if userRole != "admin" && inst.OwnerUserID != userID {
 		return storage.ErrNotFound
 	}
 
-	// Deletar sessão completamente (incluindo arquivo SQLite) se existir
 	if s.session != nil {
-		_ = s.session.DeleteSession(id) // Ignorar erro se não existir
+		_ = s.session.DeleteSession(id)
 	}
 
-	// Deletar mensagens associadas antes de deletar a instância
 	if s.messageRepo != nil {
 		if err := s.messageRepo.DeleteByInstanceID(ctx, id); err != nil {
 			return err
 		}
 	}
 
-	// Deletar logs de eventos associados antes de deletar a instância
 	if s.eventLogRepo != nil {
 		if err := s.eventLogRepo.DeleteByInstanceID(ctx, id); err != nil {
 			return err
@@ -288,7 +278,6 @@ func (s *Service) RotateTokenByUser(ctx context.Context, id string, userID strin
 		return "", err
 	}
 
-	// Admin pode rotacionar qualquer um, user só a própria
 	if userRole != "admin" && inst.OwnerUserID != userID {
 		return "", storage.ErrNotFound
 	}

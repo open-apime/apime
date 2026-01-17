@@ -54,7 +54,6 @@ func NewRouter(opts Options) *gin.Engine {
 	opts.HealthHandler.Register(api)
 	opts.AuthHandler.Register(api)
 
-	// Rota pública de mídia (não requer autenticação)
 	if opts.MediaHandler != nil {
 		api.GET("/media/:instanceId/:mediaId", opts.MediaHandler.GetMedia)
 	}

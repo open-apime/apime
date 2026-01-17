@@ -13,7 +13,6 @@ import (
 	"go.uber.org/zap"
 )
 
-// Storage gerencia arquivos de mídia temporários com TTL
 type Storage struct {
 	baseDir string
 	ttl     time.Duration
@@ -21,9 +20,7 @@ type Storage struct {
 	mu      sync.RWMutex
 }
 
-// NewStorage cria um novo storage de mídia
 func NewStorage(baseDir string, ttl time.Duration, log *zap.Logger) (*Storage, error) {
-	// Criar diretório se não existir
 	if err := os.MkdirAll(baseDir, 0755); err != nil {
 		return nil, fmt.Errorf("criar diretório de mídia: %w", err)
 	}
@@ -34,29 +31,24 @@ func NewStorage(baseDir string, ttl time.Duration, log *zap.Logger) (*Storage, e
 		log:     log,
 	}
 
-	// Iniciar job de limpeza em background
 	go s.startCleanupJob()
 
 	return s, nil
 }
 
-// Save salva dados de mídia e retorna o ID único
 func (s *Storage) Save(ctx context.Context, instanceID string, messageID string, data []byte, mimetype string) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// Criar diretório para instância
 	instanceDir := filepath.Join(s.baseDir, instanceID)
 	if err := os.MkdirAll(instanceDir, 0755); err != nil {
 		return "", fmt.Errorf("criar diretório da instância: %w", err)
 	}
 
-	// Gerar ID único baseado no hash do conteúdo + messageID
 	hash := md5.Sum(data)
 	ext := getExtensionFromMimetype(mimetype)
 	mediaID := fmt.Sprintf("%s_%x%s", messageID, hash[:4], ext)
 
-	// Salvar arquivo
 	filePath := filepath.Join(instanceDir, mediaID)
 	if err := os.WriteFile(filePath, data, 0644); err != nil {
 		return "", fmt.Errorf("salvar arquivo: %w", err)
@@ -72,7 +64,6 @@ func (s *Storage) Save(ctx context.Context, instanceID string, messageID string,
 	return mediaID, nil
 }
 
-// Get retorna os dados da mídia pelo ID
 func (s *Storage) Get(ctx context.Context, instanceID string, mediaID string) ([]byte, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -89,7 +80,6 @@ func (s *Storage) Get(ctx context.Context, instanceID string, mediaID string) ([
 	return data, nil
 }
 
-// Exists verifica se a mídia existe
 func (s *Storage) Exists(instanceID string, mediaID string) bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -106,7 +96,7 @@ func (s *Storage) GetPath(instanceID string, mediaID string) string {
 
 // startCleanupJob inicia job de limpeza periódica
 func (s *Storage) startCleanupJob() {
-	ticker := time.NewTicker(30 * time.Minute) // Rodar a cada 30 minutos
+	ticker := time.NewTicker(30 * time.Minute)
 	defer ticker.Stop()
 
 	for range ticker.C {
@@ -129,14 +119,12 @@ func (s *Storage) cleanup() {
 			return nil // Ignorar erros e continuar
 		}
 
-		// Pular diretórios
 		if d.IsDir() {
 			return nil
 		}
 
 		checked++
 
-		// Verificar data de modificação
 		info, err := d.Info()
 		if err != nil {
 			return nil
@@ -164,7 +152,6 @@ func (s *Storage) cleanup() {
 	)
 }
 
-// getExtensionFromMimetype retorna a extensão baseada no mimetype
 func getExtensionFromMimetype(mimetype string) string {
 	switch mimetype {
 	case "image/jpeg":

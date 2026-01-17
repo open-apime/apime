@@ -7,7 +7,6 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// GetClientIP extrai o IP real do cliente considerando cabeçalhos comuns de proxy.
 func GetClientIP(c *gin.Context) string {
 	if ip := c.GetHeader("CF-Connecting-IP"); ip != "" {
 		if validIP := validateIP(ip); validIP != "" {
@@ -39,7 +38,6 @@ func GetClientIP(c *gin.Context) string {
 	return c.ClientIP()
 }
 
-// validateIP verifica se a string é um IP válido
 func validateIP(ip string) string {
 	ip = strings.TrimSpace(ip)
 	if ip == "" {
@@ -58,7 +56,6 @@ func validateIP(ip string) string {
 	return ""
 }
 
-// IP é privado (não deve ser rate limitado)
 func IsPrivateIP(ip string) bool {
 	privateRanges := []string{
 		"10.0.0.0/8",

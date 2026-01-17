@@ -75,7 +75,6 @@ func (h *InstanceHandler) create(c *gin.Context) {
 		return
 	}
 
-	// Obter informações do usuário do contexto
 	userID := c.GetString("userID")
 
 	instance, err := h.service.Create(c.Request.Context(), instanceSvc.CreateInput{
@@ -97,7 +96,6 @@ func (h *InstanceHandler) list(c *gin.Context) {
 		return
 	}
 
-	// Obter informações do usuário do contexto
 	userID := c.GetString("userID")
 	userRole := c.GetString("userRole")
 
@@ -118,7 +116,6 @@ func (h *InstanceHandler) get(c *gin.Context) {
 		}
 	}
 
-	// Obter informações do usuário do contexto (se não for token de instância)
 	userID := c.GetString("userID")
 	userRole := c.GetString("userRole")
 
@@ -143,7 +140,6 @@ func (h *InstanceHandler) update(c *gin.Context) {
 		return
 	}
 
-	// Obter informações do usuário do contexto
 	userRole := c.GetString("userRole")
 
 	inst, err := h.service.UpdateByUser(c.Request.Context(), id, instanceSvc.UpdateInput{
@@ -290,14 +286,12 @@ func (h *InstanceHandler) getInstanceInfo(c *gin.Context) {
 		return
 	}
 
-	// Obter instância do banco
 	instance, err := h.service.Get(c.Request.Context(), instanceID)
 	if err != nil {
 		response.ErrorWithMessage(c, http.StatusNotFound, "instância não encontrada")
 		return
 	}
 
-	// Tentar obter cliente WhatsMeow
 	if h.sessionManager == nil {
 		response.Success(c, http.StatusOK, gin.H{
 			"id":        instance.ID,
@@ -327,7 +321,6 @@ func (h *InstanceHandler) getInstanceInfo(c *gin.Context) {
 		return
 	}
 
-	// Verificar se está realmente logado
 	isLoggedIn := client.IsLoggedIn()
 	if !isLoggedIn && instance.Status == model.InstanceStatusActive {
 		// Atualizar status no banco se não estiver logado mas status está como active
@@ -338,7 +331,6 @@ func (h *InstanceHandler) getInstanceInfo(c *gin.Context) {
 		instance.Status = model.InstanceStatusError
 	}
 
-	// Preparar resposta base
 	responseData := gin.H{
 		"id":        instance.ID,
 		"name":      instance.Name,
@@ -346,12 +338,10 @@ func (h *InstanceHandler) getInstanceInfo(c *gin.Context) {
 		"connected": isLoggedIn,
 	}
 
-	// Se estiver conectado, obter JID e foto de perfil
 	if isLoggedIn && client.Store != nil && client.Store.ID != nil {
 		instanceJID := client.Store.ID.String()
 		responseData["instanceJID"] = instanceJID
 
-		// Tentar obter foto de perfil
 		profilePic, err := client.GetProfilePictureInfo(c.Request.Context(), *client.Store.ID, nil)
 		if err == nil && profilePic != nil {
 			responseData["profilePicture"] = gin.H{

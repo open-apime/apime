@@ -9,7 +9,6 @@ import (
 
 const dashboardCookie = "dashboard_token"
 
-// DashboardAuth protege rotas HTML usando cookie de sessão.
 func DashboardAuth(secret string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		tokenString, err := c.Cookie(dashboardCookie)
@@ -45,12 +44,10 @@ func DashboardAuth(secret string) gin.HandlerFunc {
 	}
 }
 
-// SetDashboardCookie define o cookie de sessão.
 func SetDashboardCookie(c *gin.Context, token string) {
 	c.SetCookie(dashboardCookie, token, 86400, "/", "", false, true)
 }
 
-// ClearDashboardCookie remove o cookie de sessão.
 func ClearDashboardCookie(c *gin.Context) {
 	clearDashboardCookie(c)
 }

@@ -78,7 +78,6 @@ type DeviceConfig struct {
 	ID           string    `json:"id"`
 	PlatformType string    `json:"platformType"`
 	OSName       string    `json:"osName"`
-	PushName     string    `json:"pushName"`
 	CreatedAt    time.Time `json:"createdAt"`
 	UpdatedAt    time.Time `json:"updatedAt"`
 }

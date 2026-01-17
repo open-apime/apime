@@ -14,7 +14,6 @@ type instanceRepo struct {
 	db *DB
 }
 
-// NewInstanceRepository cria um novo repositório de instâncias.
 func NewInstanceRepository(db *DB) *instanceRepo {
 	return &instanceRepo{db: db}
 }

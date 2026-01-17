@@ -33,12 +33,10 @@ func AuthWithOptions(opts AuthOption) gin.HandlerFunc {
 		}
 		tokenString := strings.TrimPrefix(header, "Bearer ")
 
-		// Tentar validar como JWT primeiro
 		token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
 			return []byte(opts.JWTSecret), nil
 		})
 		if err == nil && token.Valid {
-			// JWT válido
 			if claims, ok := token.Claims.(jwt.MapClaims); ok {
 				if sub, ok := claims["sub"].(string); ok {
 					c.Set("userID", sub)
@@ -49,11 +47,9 @@ func AuthWithOptions(opts AuthOption) gin.HandlerFunc {
 			return
 		}
 
-		// Se não for JWT válido, tentar como API token
 		if opts.APITokenService != nil {
 			apiToken, err := opts.APITokenService.ValidateToken(c.Request.Context(), tokenString)
 			if err == nil {
-				// API token válido
 				c.Set("userID", apiToken.UserID)
 				c.Set("authType", "api_token")
 				c.Next()
@@ -61,7 +57,6 @@ func AuthWithOptions(opts AuthOption) gin.HandlerFunc {
 			}
 		}
 
-		// Se não for API token, tentar como token de instância
 		if opts.InstanceRepo != nil {
 			hashBytes := sha256.Sum256([]byte(tokenString))
 			hash := hex.EncodeToString(hashBytes[:])
@@ -74,7 +69,6 @@ func AuthWithOptions(opts AuthOption) gin.HandlerFunc {
 			}
 		}
 
-		// Nenhum token válido
 		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "token inválido"})
 	}
 }

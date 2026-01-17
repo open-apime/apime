@@ -33,12 +33,10 @@ var templateFS embed.FS
 //go:embed static/*
 var staticFS embed.FS
 
-// SessionManager interface para acessar informações de sessão
 type SessionManager interface {
 	GetDiagnostics(instanceID string) interface{}
 }
 
-// Options configura o dashboard HTML.
 type Options struct {
 	AuthService         *auth.Service
 	InstanceService     *instance.Service
@@ -53,7 +51,6 @@ type Options struct {
 	EnableDashboard     bool
 }
 
-// Handler orquestra as rotas HTML.
 type Handler struct {
 	auth           *auth.Service
 	instances      *instance.Service
@@ -66,7 +63,6 @@ type Handler struct {
 	baseURL        string
 }
 
-// PageData representa o payload para templates.
 type PageData struct {
 	Title           string
 	UserEmail       string
@@ -78,7 +74,6 @@ type PageData struct {
 	Data            any
 }
 
-// Flash define mensagens temporárias.
 type Flash struct {
 	Type    string
 	Message string
@@ -88,7 +83,6 @@ func HTMLTemplate() *template.Template {
 	return template.Must(template.New("T").Funcs(templateFuncMap()).ParseFS(templateFS, "templates/*.tmpl"))
 }
 
-// Register injeta os templates e rotas do dashboard.
 func Register(router *gin.Engine, opts Options) error {
 	if !opts.EnableDashboard {
 		return nil
@@ -179,6 +173,20 @@ func templateFuncMap() template.FuncMap {
 				return "status-disconnected"
 			default:
 				return "status-error"
+			}
+		},
+		"translateStatus": func(status model.InstanceStatus) string {
+			switch status {
+			case model.InstanceStatusActive:
+				return "Ativo"
+			case model.InstanceStatusPending:
+				return "Aguardando"
+			case model.InstanceStatusDisconnected:
+				return "Desconectado"
+			case model.InstanceStatusError:
+				return "Erro"
+			default:
+				return string(status)
 			}
 		},
 		"div": func(a, b any) float64 {

@@ -11,7 +11,6 @@ import (
 	"github.com/open-apime/apime/internal/webhook/delivery"
 )
 
-// Worker processa eventos da fila de webhooks.
 type Worker struct {
 	queue        *redis.Queue
 	instanceRepo storage.InstanceRepository
@@ -19,7 +18,6 @@ type Worker struct {
 	log          *zap.Logger
 }
 
-// NewWorker cria um novo worker.
 func NewWorker(
 	queue *redis.Queue,
 	instanceRepo storage.InstanceRepository,
@@ -34,7 +32,6 @@ func NewWorker(
 	}
 }
 
-// Start inicia o worker.
 func (w *Worker) Start(ctx context.Context) {
 	w.log.Info("webhook worker: iniciado")
 
@@ -49,7 +46,6 @@ func (w *Worker) Start(ctx context.Context) {
 	}
 }
 
-// processNext processa o próximo evento da fila.
 func (w *Worker) processNext(ctx context.Context) {
 	event, err := w.queue.Dequeue(ctx, 5*time.Second)
 	if err != nil {

@@ -30,7 +30,7 @@ func (h *APITokenHandler) Register(r *gin.RouterGroup) {
 
 type createTokenRequest struct {
 	Name      string  `json:"name" binding:"required"`
-	ExpiresAt *string `json:"expiresAt,omitempty"` // ISO 8601 format
+	ExpiresAt *string `json:"expiresAt,omitempty"`
 }
 
 func (h *APITokenHandler) create(c *gin.Context) {
@@ -40,7 +40,6 @@ func (h *APITokenHandler) create(c *gin.Context) {
 		return
 	}
 
-	// Obter userID do contexto de autenticação
 	userID := c.GetString("userID")
 	if userID == "" {
 		response.ErrorWithMessage(c, http.StatusUnauthorized, "usuário não autenticado")
@@ -85,7 +84,6 @@ func (h *APITokenHandler) list(c *gin.Context) {
 		return
 	}
 
-	// Remover tokenHash dos tokens na resposta
 	result := make([]gin.H, len(tokens))
 	for i, token := range tokens {
 		result[i] = gin.H{

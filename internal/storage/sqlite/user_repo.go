@@ -1,11 +1,11 @@
-package postgres
+package sqlite
 
 import (
 	"context"
+	"database/sql"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 
 	"github.com/open-apime/apime/internal/storage/model"
 )
@@ -14,6 +14,7 @@ type userRepo struct {
 	db *DB
 }
 
+// NewUserRepository cria um novo repositório de usuários.
 func NewUserRepository(db *DB) *userRepo {
 	return &userRepo{db: db}
 }
@@ -26,14 +27,11 @@ func (r *userRepo) Create(ctx context.Context, user model.User) (model.User, err
 
 	query := `
 		INSERT INTO users (id, email, password_hash, role, created_at)
-		VALUES ($1, $2, $3, $4, $5)
-		RETURNING id, email, password_hash, role, created_at
+		VALUES (?, ?, ?, ?, ?)
 	`
 
-	err := r.db.Pool.QueryRow(ctx, query,
-		user.ID, user.Email, user.PasswordHash, user.Role, user.CreatedAt,
-	).Scan(
-		&user.ID, &user.Email, &user.PasswordHash, &user.Role, &user.CreatedAt,
+	_, err := r.db.Conn.ExecContext(ctx, query,
+		user.ID, user.Email, user.PasswordHash, user.Role, user.CreatedAt.Format(time.RFC3339),
 	)
 
 	if err != nil {
@@ -47,21 +45,20 @@ func (r *userRepo) GetByID(ctx context.Context, id string) (model.User, error) {
 	query := `
 		SELECT id, email, password_hash, role, created_at
 		FROM users
-		WHERE id = $1
+		WHERE id = ?
 	`
 
 	var user model.User
-	err := r.db.Pool.QueryRow(ctx, query, id).Scan(
-		&user.ID, &user.Email, &user.PasswordHash, &user.Role, &user.CreatedAt,
+	var createdAt string
+
+	err := r.db.Conn.QueryRowContext(ctx, query, id).Scan(
+		&user.ID, &user.Email, &user.PasswordHash, &user.Role, &createdAt,
 	)
-
-	if err == pgx.ErrNoRows {
-		return model.User{}, ErrNotFound
-	}
 	if err != nil {
-		return model.User{}, err
+		return model.User{}, mapError(err)
 	}
 
+	user.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
 	return user, nil
 }
 
@@ -69,21 +66,20 @@ func (r *userRepo) GetByEmail(ctx context.Context, email string) (model.User, er
 	query := `
 		SELECT id, email, password_hash, role, created_at
 		FROM users
-		WHERE email = $1
+		WHERE email = ?
 	`
 
 	var user model.User
-	err := r.db.Pool.QueryRow(ctx, query, email).Scan(
-		&user.ID, &user.Email, &user.PasswordHash, &user.Role, &user.CreatedAt,
+	var createdAt string
+
+	err := r.db.Conn.QueryRowContext(ctx, query, email).Scan(
+		&user.ID, &user.Email, &user.PasswordHash, &user.Role, &createdAt,
 	)
-
-	if err == pgx.ErrNoRows {
-		return model.User{}, ErrNotFound
-	}
 	if err != nil {
-		return model.User{}, err
+		return model.User{}, mapError(err)
 	}
 
+	user.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
 	return user, nil
 }
 
@@ -94,7 +90,7 @@ func (r *userRepo) List(ctx context.Context) ([]model.User, error) {
 		ORDER BY created_at DESC
 	`
 
-	rows, err := r.db.Pool.Query(ctx, query)
+	rows, err := r.db.Conn.QueryContext(ctx, query)
 	if err != nil {
 		return nil, err
 	}
@@ -103,11 +99,15 @@ func (r *userRepo) List(ctx context.Context) ([]model.User, error) {
 	var users []model.User
 	for rows.Next() {
 		var user model.User
+		var createdAt string
+
 		if err := rows.Scan(
-			&user.ID, &user.Email, &user.PasswordHash, &user.Role, &user.CreatedAt,
+			&user.ID, &user.Email, &user.PasswordHash, &user.Role, &createdAt,
 		); err != nil {
 			return nil, err
 		}
+
+		user.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
 		users = append(users, user)
 	}
 
@@ -115,16 +115,17 @@ func (r *userRepo) List(ctx context.Context) ([]model.User, error) {
 }
 
 func (r *userRepo) UpdatePassword(ctx context.Context, id, passwordHash string) error {
-	cmd, err := r.db.Pool.Exec(ctx, `
+	result, err := r.db.Conn.ExecContext(ctx, `
 		UPDATE users
-		SET password_hash = $2
-		WHERE id = $1
-	`, id, passwordHash)
+		SET password_hash = ?
+		WHERE id = ?
+	`, passwordHash, id)
 	if err != nil {
 		return err
 	}
-	if cmd.RowsAffected() == 0 {
-		return ErrNotFound
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		return mapError(sql.ErrNoRows)
 	}
 	return nil
 }
@@ -132,17 +133,14 @@ func (r *userRepo) UpdatePassword(ctx context.Context, id, passwordHash string) 
 func (r *userRepo) Delete(ctx context.Context, id string) error {
 	// Verificar se é o último admin antes de deletar
 	var role string
-	err := r.db.Pool.QueryRow(ctx, `SELECT role FROM users WHERE id = $1`, id).Scan(&role)
+	err := r.db.Conn.QueryRowContext(ctx, `SELECT role FROM users WHERE id = ?`, id).Scan(&role)
 	if err != nil {
-		if err.Error() == "no rows in result set" {
-			return ErrNotFound
-		}
-		return err
+		return mapError(err)
 	}
 
 	if role == "admin" {
 		var adminCount int
-		if err := r.db.Pool.QueryRow(ctx, `SELECT COUNT(*) FROM users WHERE role = 'admin'`).Scan(&adminCount); err != nil {
+		if err := r.db.Conn.QueryRowContext(ctx, `SELECT COUNT(*) FROM users WHERE role = 'admin'`).Scan(&adminCount); err != nil {
 			return err
 		}
 		if adminCount <= 1 {
@@ -150,15 +148,16 @@ func (r *userRepo) Delete(ctx context.Context, id string) error {
 		}
 	}
 
-	cmd, err := r.db.Pool.Exec(ctx, `
+	result, err := r.db.Conn.ExecContext(ctx, `
 		DELETE FROM users
-		WHERE id = $1
+		WHERE id = ?
 	`, id)
 	if err != nil {
 		return err
 	}
-	if cmd.RowsAffected() == 0 {
-		return ErrNotFound
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		return mapError(sql.ErrNoRows)
 	}
 	return nil
 }

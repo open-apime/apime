@@ -11,7 +11,6 @@ import (
 	"github.com/open-apime/apime/internal/storage/model"
 )
 
-// Watchdog monitora a conexão de uma instância WhatsApp.
 type Watchdog struct {
 	instanceID   string
 	repo         storage.InstanceRepository
@@ -19,7 +18,6 @@ type Watchdog struct {
 	onDisconnect func(string)
 }
 
-// NewWatchdog cria um novo watchdog.
 func NewWatchdog(instanceID string, repo storage.InstanceRepository, log *zap.Logger) *Watchdog {
 	return &Watchdog{
 		instanceID: instanceID,
@@ -28,12 +26,10 @@ func NewWatchdog(instanceID string, repo storage.InstanceRepository, log *zap.Lo
 	}
 }
 
-// SetOnDisconnect define callback para quando desconectar.
 func (w *Watchdog) SetOnDisconnect(fn func(string)) {
 	w.onDisconnect = fn
 }
 
-// Start inicia o monitoramento.
 func (w *Watchdog) Start(ctx context.Context) {
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
@@ -49,7 +45,6 @@ func (w *Watchdog) Start(ctx context.Context) {
 				continue
 			}
 
-			// Verificar se status mudou para error
 			if inst.Status == model.InstanceStatusError {
 				w.log.Warn("watchdog: instância em erro", zap.String("instance", w.instanceID))
 				if w.onDisconnect != nil {
@@ -60,7 +55,6 @@ func (w *Watchdog) Start(ctx context.Context) {
 	}
 }
 
-// HandleEvent processa eventos do WhatsMeow.
 func (w *Watchdog) HandleEvent(evt any) {
 	switch evt.(type) {
 	case *events.Disconnected:

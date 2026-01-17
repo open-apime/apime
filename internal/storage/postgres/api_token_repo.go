@@ -14,7 +14,6 @@ type apiTokenRepo struct {
 	db *DB
 }
 
-// NewAPITokenRepository cria um novo repositório de API tokens.
 func NewAPITokenRepository(db *DB) *apiTokenRepo {
 	return &apiTokenRepo{db: db}
 }

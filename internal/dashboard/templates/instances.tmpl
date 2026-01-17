@@ -634,7 +634,7 @@
           {{if eq $.UserRole "admin"}}
           <td class="owner-email">{{$inst.OwnerEmail}}</td>
           {{end}}
-          <td><span class="status-badge {{statusBadge $inst.Status}}">{{$inst.Status}}</span></td>
+          <td><span class="status-badge {{statusBadge $inst.Status}}">{{translateStatus $inst.Status}}</span></td>
           <td>{{formatTime $inst.CreatedAt}}</td>
           <td>
             <div class="action-buttons">

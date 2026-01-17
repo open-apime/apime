@@ -1,9 +1,5 @@
--- Seed para usuário admin padrão
 -- Email: admin@apime.local
--- Senha: admin123
--- Hash bcrypt para "admin123"
--- Só cria se NÃO existir nenhum admin no sistema
--- Evita recriar o admin padrão caso todos os usuários sejam removidos
+-- Senha (Hash bcrypt): admin123
 
 INSERT INTO users (id, email, password_hash, role, created_at)
 SELECT 

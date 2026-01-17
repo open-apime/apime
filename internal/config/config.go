@@ -7,23 +7,23 @@ import (
 	"github.com/caarlos0/env/v10"
 )
 
-// Config representa as variáveis principais da aplicação.
 type Config struct {
-	App        AppConfig
-	DB         DatabaseConfig
-	Redis      RedisConfig
-	JWT        JWTConfig
-	Log        LogConfig
-	Storage    StorageConfig
-	RateLimit  RateLimitConfig
+	App         AppConfig
+	DB          DatabaseConfig
+	Redis       RedisConfig
+	JWT         JWTConfig
+	Log         LogConfig
+	Storage     StorageConfig
+	RateLimit   RateLimitConfig
 	IPRateLimit IPRateLimitConfig
-	WhatsApp   WhatsAppConfig
-	Webhook    WebhookConfig
-	Dashboard  DashboardConfig
+	WhatsApp    WhatsAppConfig
+	Webhook     WebhookConfig
+	Dashboard   DashboardConfig
 }
 
 type StorageConfig struct {
-	Driver string `env:"STORAGE_DRIVER" envDefault:"memory"`
+	Driver  string `env:"DB_DRIVER" envDefault:"sqlite"`
+	DataDir string `env:"DATA_DIR" envDefault:"/app/data"`
 }
 
 type AppConfig struct {
@@ -84,7 +84,6 @@ type LogConfig struct {
 
 type WhatsAppConfig struct {
 	SessionKeyEnc string `env:"WHATSAPP_SESSION_KEY_ENC" envDefault:"apime-session-key-change-in-production"`
-	SessionDir    string `env:"WHATSAPP_SESSION_DIR" envDefault:"/app/sessions"`
 }
 
 type WebhookConfig struct {
