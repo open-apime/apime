@@ -12,8 +12,8 @@ import (
 	"go.mau.fi/whatsmeow/types/events"
 	"go.uber.org/zap"
 
+	"github.com/open-apime/apime/internal/pkg/queue"
 	"github.com/open-apime/apime/internal/storage/media"
-	"github.com/open-apime/apime/internal/storage/redis"
 )
 
 type InstanceChecker interface {
@@ -21,16 +21,16 @@ type InstanceChecker interface {
 }
 
 type EventHandler struct {
-	queue           *redis.Queue
+	queue           queue.Queue
 	log             *zap.Logger
 	mediaStorage    *media.Storage
 	apiBaseURL      string
 	instanceChecker InstanceChecker
 }
 
-func NewEventHandler(queue *redis.Queue, log *zap.Logger, mediaStorage *media.Storage, apiBaseURL string, instanceChecker InstanceChecker) *EventHandler {
+func NewEventHandler(q queue.Queue, log *zap.Logger, mediaStorage *media.Storage, apiBaseURL string, instanceChecker InstanceChecker) *EventHandler {
 	return &EventHandler{
-		queue:           queue,
+		queue:           q,
 		log:             log,
 		mediaStorage:    mediaStorage,
 		apiBaseURL:      apiBaseURL,
@@ -52,7 +52,7 @@ func (h *EventHandler) Handle(ctx context.Context, instanceID string, instanceJI
 		normalized["instanceJID"] = instanceJID
 	}
 
-	event := redis.Event{
+	event := queue.Event{
 		ID:         h.generateEventID(),
 		InstanceID: instanceID,
 		Type:       normalized["type"].(string),

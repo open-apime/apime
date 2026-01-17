@@ -147,11 +147,9 @@ func main() {
 		Enabled:  cfg.RateLimit.Enabled,
 		Requests: cfg.RateLimit.Requests,
 		Window:   time.Duration(cfg.RateLimit.WindowSeconds) * time.Second,
-		Prefix:   cfg.RateLimit.RedisPrefix,
+		Prefix:   cfg.RateLimit.Prefix,
 		Logger:   logr,
-	}
-	if repos.RedisClient != nil {
-		rateLimitOpts.RedisClient = repos.RedisClient.RDB()
+		Limiter:  repos.RateLimiter,
 	}
 
 	router := server.NewRouter(server.Options{

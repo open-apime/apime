@@ -57,13 +57,14 @@ type RedisConfig struct {
 	Addr     string `env:"REDIS_ADDR" envDefault:"localhost:6379"`
 	Password string `env:"REDIS_PASSWORD" envDefault:""`
 	DB       int    `env:"REDIS_DB" envDefault:"0"`
+	Enabled  bool   `env:"REDIS_ENABLED" envDefault:"false"`
 }
 
 type RateLimitConfig struct {
 	Enabled       bool   `env:"RATE_LIMIT_ENABLED" envDefault:"true"`
 	Requests      int    `env:"RATE_LIMIT_REQUESTS" envDefault:"300"`
 	WindowSeconds int    `env:"RATE_LIMIT_WINDOW_SECONDS" envDefault:"60"`
-	RedisPrefix   string `env:"RATE_LIMIT_REDIS_PREFIX" envDefault:"ratelimit:api"`
+	Prefix        string `env:"RATE_LIMIT_PREFIX" envDefault:"ratelimit:api"`
 }
 
 type IPRateLimitConfig struct {

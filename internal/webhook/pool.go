@@ -7,20 +7,20 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/open-apime/apime/internal/pkg/queue"
 	"github.com/open-apime/apime/internal/storage"
-	"github.com/open-apime/apime/internal/storage/redis"
 	"github.com/open-apime/apime/internal/webhook/delivery"
 )
 
 type Pool struct {
-	queue        *redis.Queue
+	queue        queue.Queue
 	instanceRepo storage.InstanceRepository
 	delivery     *delivery.Delivery
 	log          *zap.Logger
 
 	numWorkers int
 	workers    []*poolWorker
-	taskChan   chan *redis.Event
+	taskChan   chan *queue.Event
 	wg         sync.WaitGroup
 	ctx        context.Context
 	cancel     context.CancelFunc
@@ -28,14 +28,14 @@ type Pool struct {
 
 type poolWorker struct {
 	id       int
-	taskChan chan *redis.Event
+	taskChan chan *queue.Event
 	log      *zap.Logger
 	delivery *delivery.Delivery
 	instRepo storage.InstanceRepository
 }
 
 func NewPool(
-	queue *redis.Queue,
+	q queue.Queue,
 	instanceRepo storage.InstanceRepository,
 	delivery *delivery.Delivery,
 	log *zap.Logger,
@@ -46,13 +46,13 @@ func NewPool(
 	}
 
 	return &Pool{
-		queue:        queue,
+		queue:        q,
 		instanceRepo: instanceRepo,
 		delivery:     delivery,
 		log:          log,
 		numWorkers:   numWorkers,
 		workers:      make([]*poolWorker, numWorkers),
-		taskChan:     make(chan *redis.Event, numWorkers*2),
+		taskChan:     make(chan *queue.Event, numWorkers*2),
 	}
 }
 
@@ -137,7 +137,7 @@ func (p *Pool) runWorker(worker *poolWorker) {
 	}
 }
 
-func (w *poolWorker) processEvent(ctx context.Context, event *redis.Event) {
+func (w *poolWorker) processEvent(ctx context.Context, event *queue.Event) {
 	w.log.Debug("webhook pool: processando evento", zap.Int("workerId", w.id), zap.String("eventId", event.ID))
 
 	inst, err := w.instRepo.GetByID(ctx, event.InstanceID)

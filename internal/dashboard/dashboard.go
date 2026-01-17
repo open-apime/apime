@@ -364,30 +364,31 @@ func (h *Handler) rotateInstanceToken(c *gin.Context) {
 	values.Set("newInstanceToken", plain)
 	values.Set("newInstanceTokenInstanceID", id)
 	c.Redirect(http.StatusSeeOther, "/dashboard?"+values.Encode())
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-	defer cancel()
+}
+
+func (h *Handler) showInstanceQR(c *gin.Context) {
+	id := c.Param("id")
+	if id == "" {
+		redirectWithMessage(c, "/dashboard", "error", "Instância inválida.")
+		return
+	}
 
 	userID := c.GetString("userID")
 	userRole := c.GetString("userRole")
 
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 60*time.Second)
+	defer cancel()
+
 	code, err := h.instances.GetQRByUser(ctx, id, userID, userRole)
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
-			select {
-			case <-c.Request.Context().Done():
-				h.logger.Info("request cancelado pelo cliente durante geração de QR", zap.String("instance_id", id))
-				redirectWithMessage(c, "/dashboard", "error", "Requisição cancelada. Se o QR code não aparecer, tente novamente em alguns segundos.")
-				return
-			default:
-				h.logger.Warn("timeout ao gerar QR", zap.String("instance_id", id))
-				redirectWithMessage(c, "/dashboard", "error", "Timeout ao gerar QR code. Tente novamente.")
-				return
-			}
+			h.logger.Info("request cancelado pelo cliente durante geração de QR", zap.String("instance_id", id))
+			redirectWithMessage(c, "/dashboard", "error", "Requisição cancelada.")
+			return
 		}
-
 		if errors.Is(err, context.DeadlineExceeded) {
 			h.logger.Warn("timeout ao gerar QR", zap.String("instance_id", id))
-			redirectWithMessage(c, "/dashboard", "error", "Timeout ao gerar QR code. Tente novamente.")
+			redirectWithMessage(c, "/dashboard", "error", "Timeout ao gerar QR code.")
 			return
 		}
 
@@ -397,7 +398,7 @@ func (h *Handler) rotateInstanceToken(c *gin.Context) {
 	}
 
 	if code == "" {
-		redirectWithMessage(c, "/dashboard", "error", "QR code vazio. Tente novamente.")
+		redirectWithMessage(c, "/dashboard", "error", "QR code não disponível (já conectado?).")
 		return
 	}
 
@@ -415,6 +416,29 @@ func (h *Handler) rotateInstanceToken(c *gin.Context) {
 	}
 	page := h.pageData(c, "", "instance_qr_content", data)
 	c.HTML(http.StatusOK, "layout", page)
+}
+
+func (h *Handler) getQRImage(c *gin.Context) {
+	id := c.Param("id")
+	userID := c.GetString("userID")
+	userRole := c.GetString("userRole")
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
+	defer cancel()
+
+	code, err := h.instances.GetQRByUser(ctx, id, userID, userRole)
+	if err != nil || code == "" {
+		c.Status(http.StatusNotFound)
+		return
+	}
+
+	png, err := qrcode.Encode(code, qrcode.Medium, 256)
+	if err != nil {
+		c.Status(http.StatusInternalServerError)
+		return
+	}
+
+	c.Data(http.StatusOK, "image/png", png)
 }
 
 func (h *Handler) getInstanceQRStatus(c *gin.Context) {

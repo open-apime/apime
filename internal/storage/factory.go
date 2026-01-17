@@ -4,8 +4,14 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/open-apime/apime/internal/config"
+	"github.com/open-apime/apime/internal/pkg/queue"
+	queue_memory "github.com/open-apime/apime/internal/pkg/queue/memory"
+	queue_redis "github.com/open-apime/apime/internal/pkg/queue/redis"
+	"github.com/open-apime/apime/internal/pkg/ratelimiter"
+	limiter_memory "github.com/open-apime/apime/internal/pkg/ratelimiter/memory"
+	limiter_redis "github.com/open-apime/apime/internal/pkg/ratelimiter/redis"
 	"github.com/open-apime/apime/internal/storage/postgres"
-	"github.com/open-apime/apime/internal/storage/redis"
+	storage_redis "github.com/open-apime/apime/internal/storage/redis"
 	"github.com/open-apime/apime/internal/storage/sqlite"
 )
 
@@ -16,8 +22,9 @@ type Repositories struct {
 	User         UserRepository
 	APIToken     APITokenRepository
 	DeviceConfig DeviceConfigRepository
-	RedisClient  *redis.Client
-	WebhookQueue *redis.Queue
+	RedisClient  *storage_redis.Client // Pode ser nil se Redis estiver desabilitado
+	WebhookQueue queue.Queue
+	RateLimiter  ratelimiter.Limiter
 }
 
 func NewRepositories(cfg config.Config, log *zap.Logger) (*Repositories, error) {
@@ -25,14 +32,34 @@ func NewRepositories(cfg config.Config, log *zap.Logger) (*Repositories, error) 
 		zap.String("driver", cfg.Storage.Driver),
 	)
 
-	log.Debug("criando conexão com Redis")
-	redisClient, err := redis.New(cfg.Redis, log)
-	if err != nil {
-		log.Error("erro ao conectar com Redis", zap.Error(err))
-		return nil, err
+	var (
+		webhookQueue queue.Queue
+		rateLimiter  ratelimiter.Limiter
+		storeRedis   *storage_redis.Client
+		err          error
+	)
+
+	// Inicializa Redis apenas se explicitamente habilitado
+	useRedis := cfg.Redis.Enabled
+
+	if useRedis {
+		log.Info("inicializando Redis...")
+		storeRedis, err = storage_redis.New(cfg.Redis, log)
+		if err != nil {
+			log.Error("erro ao conectar com Redis", zap.Error(err))
+			return nil, err
+		}
+
+		redisClient := storeRedis.RDB()
+		webhookQueue = queue_redis.NewQueue(redisClient, "webhook:events")
+		rateLimiter = limiter_redis.NewLimiter(redisClient)
+		log.Info("Redis conectado, fila e limiter configurados")
+	} else {
+		log.Info("usando implementações em memória (Redis desabilitado)")
+		webhookQueue = queue_memory.NewQueue(10000)
+		rateLimiter = limiter_memory.NewLimiter()
+		storeRedis = nil
 	}
-	webhookQueue := redis.NewQueue(redisClient, "webhook:events")
-	log.Info("Redis conectado e fila de webhooks criada")
 
 	switch cfg.Storage.Driver {
 	case "sqlite", "":
@@ -51,8 +78,9 @@ func NewRepositories(cfg config.Config, log *zap.Logger) (*Repositories, error) 
 			User:         sqlite.NewUserRepository(db),
 			APIToken:     sqlite.NewAPITokenRepository(db),
 			DeviceConfig: sqlite.NewDeviceConfigRepository(db),
-			RedisClient:  redisClient,
+			RedisClient:  storeRedis,
 			WebhookQueue: webhookQueue,
+			RateLimiter:  rateLimiter,
 		}, nil
 
 	case "postgres":
@@ -71,8 +99,9 @@ func NewRepositories(cfg config.Config, log *zap.Logger) (*Repositories, error) 
 			User:         postgres.NewUserRepository(db),
 			APIToken:     postgres.NewAPITokenRepository(db),
 			DeviceConfig: postgres.NewDeviceConfigRepository(db),
-			RedisClient:  redisClient,
+			RedisClient:  storeRedis,
 			WebhookQueue: webhookQueue,
+			RateLimiter:  rateLimiter,
 		}, nil
 
 	default:

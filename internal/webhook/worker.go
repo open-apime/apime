@@ -6,26 +6,26 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/open-apime/apime/internal/pkg/queue"
 	"github.com/open-apime/apime/internal/storage"
-	"github.com/open-apime/apime/internal/storage/redis"
 	"github.com/open-apime/apime/internal/webhook/delivery"
 )
 
 type Worker struct {
-	queue        *redis.Queue
+	queue        queue.Queue
 	instanceRepo storage.InstanceRepository
 	delivery     *delivery.Delivery
 	log          *zap.Logger
 }
 
 func NewWorker(
-	queue *redis.Queue,
+	q queue.Queue,
 	instanceRepo storage.InstanceRepository,
 	delivery *delivery.Delivery,
 	log *zap.Logger,
 ) *Worker {
 	return &Worker{
-		queue:        queue,
+		queue:        q,
 		instanceRepo: instanceRepo,
 		delivery:     delivery,
 		log:          log,
@@ -85,7 +85,6 @@ func (w *Worker) processNext(ctx context.Context) {
 		w.log.Error("webhook worker: falha na entrega", zap.Error(err))
 		return
 	}
-
 
 	w.log.Info("webhook worker: evento entregue com sucesso", zap.String("eventId", event.ID))
 }
