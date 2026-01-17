@@ -34,7 +34,7 @@ func (r *instanceRepo) Create(ctx context.Context, inst model.Instance) (model.I
 		                       history_sync_status, history_sync_cycle_id, history_sync_updated_at, created_at, updated_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 		RETURNING id, name, owner_user_id, status, COALESCE(webhook_url, ''), COALESCE(webhook_secret, ''), COALESCE(instance_token_hash, ''), instance_token_updated_at,
-		          history_sync_status, COALESCE(history_sync_cycle_id, ''), history_sync_updated_at, created_at, updated_at
+		          history_sync_status, COALESCE(history_sync_cycle_id::text, ''), history_sync_updated_at, created_at, updated_at
 	`
 
 	err := r.db.Pool.QueryRow(ctx, query,
@@ -58,7 +58,7 @@ func (r *instanceRepo) Create(ctx context.Context, inst model.Instance) (model.I
 func (r *instanceRepo) GetByTokenHash(ctx context.Context, tokenHash string) (model.Instance, error) {
 	query := `
 		SELECT id, name, owner_user_id, status, session_blob, COALESCE(webhook_url, ''), COALESCE(webhook_secret, ''), COALESCE(instance_token_hash, ''), instance_token_updated_at,
-		       history_sync_status, COALESCE(history_sync_cycle_id, ''), history_sync_updated_at, created_at, updated_at
+		       history_sync_status, COALESCE(history_sync_cycle_id::text, ''), history_sync_updated_at, created_at, updated_at
 		FROM instances
 		WHERE instance_token_hash = $1
 	`
@@ -69,7 +69,7 @@ func (r *instanceRepo) GetByTokenHash(ctx context.Context, tokenHash string) (mo
 		&inst.WebhookURL, &inst.WebhookSecret, &inst.TokenHash, &inst.TokenUpdatedAt,
 		&inst.HistorySyncStatus, &inst.HistorySyncCycleID, &inst.HistorySyncUpdatedAt,
 		&inst.CreatedAt, &inst.UpdatedAt,
-)
+	)
 	if err == pgx.ErrNoRows {
 		return model.Instance{}, ErrNotFound
 	}
@@ -82,7 +82,7 @@ func (r *instanceRepo) GetByTokenHash(ctx context.Context, tokenHash string) (mo
 func (r *instanceRepo) GetByID(ctx context.Context, id string) (model.Instance, error) {
 	query := `
 		SELECT id, name, owner_user_id, status, session_blob, COALESCE(webhook_url, ''), COALESCE(webhook_secret, ''), COALESCE(instance_token_hash, ''), instance_token_updated_at,
-		       history_sync_status, COALESCE(history_sync_cycle_id, ''), history_sync_updated_at, created_at, updated_at
+		       history_sync_status, COALESCE(history_sync_cycle_id::text, ''), history_sync_updated_at, created_at, updated_at
 		FROM instances
 		WHERE id = $1
 	`
@@ -109,7 +109,7 @@ func (r *instanceRepo) GetByID(ctx context.Context, id string) (model.Instance, 
 func (r *instanceRepo) List(ctx context.Context) ([]model.Instance, error) {
 	query := `
 		SELECT i.id, i.name, i.owner_user_id, COALESCE(u.email, ''), i.status, COALESCE(i.webhook_url, ''), COALESCE(i.webhook_secret, ''), COALESCE(i.instance_token_hash, ''), i.instance_token_updated_at,
-		       i.history_sync_status, COALESCE(i.history_sync_cycle_id, ''), i.history_sync_updated_at, i.created_at, i.updated_at
+		       i.history_sync_status, COALESCE(i.history_sync_cycle_id::text, ''), i.history_sync_updated_at, i.created_at, i.updated_at
 		FROM instances i
 		LEFT JOIN users u ON i.owner_user_id = u.id
 		ORDER BY i.created_at DESC
@@ -142,7 +142,7 @@ func (r *instanceRepo) List(ctx context.Context) ([]model.Instance, error) {
 func (r *instanceRepo) ListByOwner(ctx context.Context, ownerUserID string) ([]model.Instance, error) {
 	query := `
 		SELECT i.id, i.name, i.owner_user_id, COALESCE(u.email, ''), i.status, COALESCE(i.webhook_url, ''), COALESCE(i.webhook_secret, ''), COALESCE(i.instance_token_hash, ''), i.instance_token_updated_at,
-		       i.history_sync_status, COALESCE(i.history_sync_cycle_id, ''), i.history_sync_updated_at, i.created_at, i.updated_at
+		       i.history_sync_status, COALESCE(i.history_sync_cycle_id::text, ''), i.history_sync_updated_at, i.created_at, i.updated_at
 		FROM instances i
 		LEFT JOIN users u ON i.owner_user_id = u.id
 		WHERE i.owner_user_id = $1
@@ -182,7 +182,7 @@ func (r *instanceRepo) Update(ctx context.Context, inst model.Instance) (model.I
 		    history_sync_status = $10, history_sync_cycle_id = $11, history_sync_updated_at = $12, updated_at = $13
 		WHERE id = $1
 		RETURNING id, name, owner_user_id, status, COALESCE(webhook_url, ''), COALESCE(webhook_secret, ''), COALESCE(instance_token_hash, ''), instance_token_updated_at,
-		          history_sync_status, COALESCE(history_sync_cycle_id, ''), history_sync_updated_at, created_at, updated_at
+		          history_sync_status, COALESCE(history_sync_cycle_id::text, ''), history_sync_updated_at, created_at, updated_at
 	`
 
 	err := r.db.Pool.QueryRow(ctx, query,

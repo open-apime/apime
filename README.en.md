@@ -5,6 +5,7 @@ Go API to orchestrate multiple instances.
 Based on the [WhatsMeow](https://github.com/tulir/whatsmeow) library with dashboard and Webhook events.
 
 <img src="docs/dashboard.png" />
+<img src="docs/dashboard_light.png" />
 
 1. **Configure the environment:**
    ```bash

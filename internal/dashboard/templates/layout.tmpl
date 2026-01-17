@@ -25,6 +25,7 @@
       --focus: rgba(59, 130, 246, 0.35);
       --shadow: 0 20px 60px rgba(0,0,0,0.45);
       --radius: 1rem;
+      --menu-bg: #0f172a;
     }
     html {
       background-color: var(--bg);
@@ -39,6 +40,7 @@
       --muted: #475569;
       --focus: rgba(37, 99, 235, 0.25);
       --shadow: 0 24px 80px rgba(15,23,42,0.12);
+      --menu-bg: #ffffff;
     }
     [data-theme="dark"] {
       color-scheme: dark;
@@ -114,7 +116,7 @@
       padding: 0.35rem;
       border-radius: 0.9rem;
       border: 1px solid var(--border);
-      background: var(--surface);
+      background: var(--menu-bg);
       box-shadow: var(--shadow);
       display: none;
       z-index: 60;
@@ -449,6 +451,12 @@
     {{if eq .ContentTemplate "docs_content"}}{{template "docs_content" .}}{{end}}
     {{if eq .ContentTemplate "error_content"}}{{template "error_content" .}}{{end}}
   </main>
+
+  {{if ne .ContentTemplate "login_content"}}
+  <footer style="text-align:center;padding:1rem 2rem;font-size:0.75rem;color:var(--muted);border-top:1px solid var(--border);margin-top:auto;">
+    ApiMe v{{.Version}}
+  </footer>
+  {{end}}
 
   <!-- Modal de Confirmação Global -->
   <style>

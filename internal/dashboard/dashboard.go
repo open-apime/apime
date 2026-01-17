@@ -19,6 +19,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/open-apime/apime/internal/api/middleware"
+	"github.com/open-apime/apime/internal/config"
 	"github.com/open-apime/apime/internal/service/api_token"
 	"github.com/open-apime/apime/internal/service/auth"
 	device_config "github.com/open-apime/apime/internal/service/device_config"
@@ -69,6 +70,7 @@ type PageData struct {
 	UserRole        string
 	Path            string
 	BaseURL         string
+	Version         string
 	Flash           *Flash
 	ContentTemplate string
 	Data            any
@@ -724,6 +726,7 @@ func (h *Handler) pageData(c *gin.Context, title, content string, data any) Page
 		UserRole:        c.GetString("userRole"),
 		Path:            path,
 		BaseURL:         h.baseURL,
+		Version:         config.Version,
 		Flash:           flash,
 		ContentTemplate: content,
 		Data:            data,

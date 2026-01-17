@@ -40,11 +40,11 @@ func NewEventHandler(q queue.Queue, log *zap.Logger, mediaStorage *media.Storage
 
 func (h *EventHandler) Handle(ctx context.Context, instanceID string, instanceJID string, client *whatsmeow.Client, evt any) {
 	if h.instanceChecker != nil && !h.instanceChecker.HasWebhook(ctx, instanceID) {
-		h.log.Info("evento ignorado: instância sem webhook configurado", zap.String("instance", instanceID))
+		h.log.Info("[dispatcher] evento ignorado: instância sem webhook configurado", zap.String("instance", instanceID))
 		return
 	}
 
-	h.log.Debug("processando evento para webhook", zap.String("instance", instanceID), zap.String("type", fmt.Sprintf("%T", evt)))
+	h.log.Debug("[dispatcher] processando evento para webhook", zap.String("instance", instanceID), zap.String("type", fmt.Sprintf("%T", evt)))
 
 	normalized := h.normalizeEvent(ctx, instanceID, client, evt)
 
@@ -61,14 +61,14 @@ func (h *EventHandler) Handle(ctx context.Context, instanceID string, instanceJI
 	}
 
 	if err := h.queue.Enqueue(ctx, event); err != nil {
-		h.log.Error("event handler: erro ao enfileirar", zap.Error(err))
+		h.log.Error("[dispatcher] event handler: erro ao enfileirar", zap.Error(err))
 		return
 	}
 
-	h.log.Info("evento enfileirado", zap.String("type", event.Type), zap.String("instance", instanceID))
+	h.log.Info("[dispatcher] evento enfileirado", zap.String("type", event.Type), zap.String("instance", instanceID))
 
 	payloadInfo, _ := json.Marshal(event.Payload)
-	h.log.Debug("event handler: detalhes do evento",
+	h.log.Debug("[dispatcher] event handler: detalhes do evento",
 		zap.String("type", event.Type),
 		zap.String("instance", instanceID),
 		zap.String("instanceJID", instanceJID),

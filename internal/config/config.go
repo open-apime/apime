@@ -22,8 +22,9 @@ type Config struct {
 }
 
 type StorageConfig struct {
-	Driver  string `env:"DB_DRIVER" envDefault:"sqlite"`
-	DataDir string `env:"DATA_DIR" envDefault:"/app/data"`
+	Driver          string `env:"DB_DRIVER" envDefault:"sqlite"`
+	DataDir         string `env:"DATA_DIR" envDefault:"/app/data"`
+	MediaTTLSeconds int    `env:"MEDIA_TTL_SECONDS" envDefault:"7200"`
 }
 
 type AppConfig struct {

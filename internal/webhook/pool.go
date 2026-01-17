@@ -2,6 +2,7 @@ package webhook
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"time"
 
@@ -121,12 +122,12 @@ func (p *Pool) runDispatcher() {
 func (p *Pool) runWorker(worker *poolWorker) {
 	defer p.wg.Done()
 
-	p.log.Info("webhook pool: worker iniciado", zap.Int("workerId", worker.id))
+	p.log.Info(fmt.Sprintf("[worker %d] webhook pool: worker iniciado", worker.id+1))
 
 	for {
 		select {
 		case <-p.ctx.Done():
-			p.log.Info("webhook pool: worker encerrando", zap.Int("workerId", worker.id))
+			p.log.Info(fmt.Sprintf("[worker %d] webhook pool: worker encerrando", worker.id+1))
 			return
 		case event := <-worker.taskChan:
 			if event == nil {
@@ -138,12 +139,12 @@ func (p *Pool) runWorker(worker *poolWorker) {
 }
 
 func (w *poolWorker) processEvent(ctx context.Context, event *queue.Event) {
-	w.log.Debug("webhook pool: processando evento", zap.Int("workerId", w.id), zap.String("eventId", event.ID))
+	prefix := fmt.Sprintf("[worker %d]", w.id+1)
+	w.log.Debug(fmt.Sprintf("%s webhook pool: processando evento", prefix), zap.String("eventId", event.ID))
 
 	inst, err := w.instRepo.GetByID(ctx, event.InstanceID)
 	if err != nil {
-		w.log.Error("webhook pool: instância não encontrada",
-			zap.Int("workerId", w.id),
+		w.log.Error(fmt.Sprintf("%s webhook pool: instância não encontrada", prefix),
 			zap.String("eventId", event.ID),
 			zap.Error(err),
 		)
@@ -151,8 +152,7 @@ func (w *poolWorker) processEvent(ctx context.Context, event *queue.Event) {
 	}
 
 	if inst.WebhookURL == "" {
-		w.log.Warn("webhook pool: instância sem webhook configurado",
-			zap.Int("workerId", w.id),
+		w.log.Warn(fmt.Sprintf("%s webhook pool: instância sem webhook configurado", prefix),
 			zap.String("instanceId", event.InstanceID),
 		)
 		return
@@ -167,16 +167,14 @@ func (w *poolWorker) processEvent(ctx context.Context, event *queue.Event) {
 	}
 
 	if err := w.delivery.Deliver(ctx, inst.WebhookURL, inst.WebhookSecret, payload); err != nil {
-		w.log.Error("webhook pool: falha na entrega",
-			zap.Int("workerId", w.id),
+		w.log.Error(fmt.Sprintf("%s webhook pool: falha na entrega", prefix),
 			zap.String("eventId", event.ID),
 			zap.Error(err),
 		)
 		return
 	}
 
-	w.log.Info("webhook pool: evento entregue com sucesso",
-		zap.Int("workerId", w.id),
+	w.log.Info(fmt.Sprintf("%s webhook pool: evento entregue com sucesso", prefix),
 		zap.String("eventId", event.ID),
 	)
 }

@@ -457,11 +457,6 @@ func (h *WhatsAppHandler) newsletterSendReaction(c *gin.Context) {
 	response.Success(c, http.StatusOK, gin.H{"status": "ok"})
 }
 
-type getNewsletterMessageUpdatesRequest struct {
-	// params opcionais do fork: passamos como objeto livre, mas aqui suportamos só "limit" e "after" como strings
-	Params map[string]any `json:"params"`
-}
-
 func (h *WhatsAppHandler) getNewsletterMessageUpdates(c *gin.Context) {
 	instanceID, ok := h.requireInstanceToken(c)
 	if !ok {

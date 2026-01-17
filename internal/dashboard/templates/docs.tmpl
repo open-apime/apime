@@ -6,6 +6,12 @@
     --code-text: #e2e8f0;
   }
 
+  [data-theme="light"] {
+    --code-bg: #e2e8f0;
+    --code-text: #0f172a;
+  }
+
+
   .docs-layout {
     display: flex;
     gap: 2rem;
@@ -22,6 +28,7 @@
     height: calc(100vh - 4rem);
     overflow-y: auto;
     padding-right: 1rem;
+    padding-bottom: 4rem;
     border-right: 1px solid var(--border);
   }
 
@@ -37,13 +44,60 @@
     margin-bottom: 2rem;
   }
 
-  .nav-group h4 {
+  .nav-group-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: pointer;
+    padding: 0.5rem;
+    margin-bottom: 0.5rem;
+    border-radius: 6px;
+    transition: background 0.2s;
+  }
+
+  .nav-group-header:hover {
+    background: rgba(255,255,255,0.03);
+  }
+
+  .nav-group-header h4 {
     font-size: 0.75rem;
     text-transform: uppercase;
     letter-spacing: 0.05em;
     color: var(--muted);
-    margin-bottom: 0.75rem;
+    margin: 0;
+    font-weight: 700;
+  }
+  
+  .nav-group.expanded .nav-group-header h4 {
+    color: var(--primary);
+  }
+
+  .nav-icon {
+    width: 16px;
+    height: 16px;
+    color: var(--muted);
+    transition: transform 0.3s ease;
+  }
+
+  .nav-group.expanded .nav-icon {
+    transform: rotate(180deg);
+    color: var(--primary);
+  }
+
+  .nav-group-content {
+    display: none;
     padding-left: 0.5rem;
+    overflow: hidden;
+  }
+
+  .nav-group.expanded .nav-group-content {
+    display: block;
+    animation: slideDown 0.3s ease-out;
+  }
+
+  @keyframes slideDown {
+    from { opacity: 0; transform: translateY(-5px); }
+    to { opacity: 1; transform: translateY(0); }
   }
 
   .nav-item {
@@ -72,6 +126,7 @@
   .docs-main {
     flex: 1;
     min-width: 0;
+    padding-bottom: 50vh; /* Allow scrolling past last content to trigger selection */
   }
 
   .endpoint-section {
@@ -137,21 +192,38 @@
   /* Code Blocks */
   .code-container {
     background: var(--code-bg);
+    background: var(--code-bg);
     border-radius: 12px;
-    overflow: hidden;
     box-shadow: 0 20px 40px -10px rgba(0,0,0,0.4);
-    position: sticky;
+    /* position: sticky; removed per user request */
+    /* top: 2rem; removed per user request */
     top: 2rem;
+    display: flex;
+    flex-direction: column;
+    margin-bottom: 1.5rem;
   }
 
   .code-header {
     padding: 0.75rem 1.25rem;
-    background: rgba(255,255,255,0.05);
+    background: var(--code-bg); /* Use same background as container */
     display: flex;
     justify-content: space-between;
     align-items: center;
-    border-bottom: 1px solid rgba(255,255,255,0.08);
+    border-bottom: 1px solid rgba(255,255,255,0.08); /* Fallback or always visible? */
+    /* Default state (collapsed): fully rounded */
+    border-radius: 12px;
   }
+
+  /* When container is expanded, header loses bottom radius */
+  .code-container.expanded .code-header {
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+  }
+
+  /* Hide bottom border when collapsed if desired, but user didn't ask. 
+     User said 'ponta quadrada' (square tip) needs to be 'redondo' (round). 
+     So we just fix the radius. 
+  */
 
   .code-lang {
     font-size: 0.7rem;
@@ -169,10 +241,38 @@
     color: #f8fafc;
     line-height: 1.6;
     overflow-x: auto;
+    display: none; /* Default hidden? Or expanded? Let's check JS */
+    border-bottom-left-radius: 12px;
+    border-bottom-right-radius: 12px;
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
+  }
+
+  .code-body.expanded {
+    display: block;
   }
 
   pre { margin: 0; white-space: pre-wrap; word-break: break-all; }
 
+  .btn-expand-code {
+    background: none;
+    border: 1px solid rgba(255,255,255,0.1);
+    color: #94a3b8;
+    cursor: pointer;
+    padding: 0.4rem 0.75rem;
+    border-radius: 6px;
+    font-size: 0.7rem;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+
+  .btn-expand-code:hover {
+    color: white;
+    background: rgba(255,255,255,0.1);
+    border-color: rgba(255,255,255,0.2);
+  }
   .btn-copy-code {
     background: none;
     border: 1px solid rgba(255,255,255,0.1);
@@ -268,42 +368,63 @@
 <div class="docs-layout">
   <!-- Sidebar -->
   <aside class="docs-sidebar">
-    <div class="nav-group">
-      <h4>Conceitos</h4>
-      <a href="#intro" class="nav-item active">Introdução</a>
-      <!-- Health Check precisa ser exibido logo após a introdução para dar destaque ao monitoramento -->
-      <a href="#health-check" class="nav-item">Health Check</a>
-      <a href="#users-admin" class="nav-item">Gerenciamento de Usuários</a>
-      <a href="#webhooks" class="nav-item">Webhooks</a>
+    <!-- Conceitos: Default expanded -->
+    <div class="nav-group expanded">
+      <div class="nav-group-header" onclick="toggleSidebarCategory(this)">
+        <h4>Conceitos</h4>
+        <svg class="nav-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+      </div>
+      <div class="nav-group-content">
+        <a href="#intro" class="nav-item active">Introdução</a>
+        <!-- Health Check precisa ser exibido logo após a introdução para dar destaque ao monitoramento -->
+        <a href="#health-check" class="nav-item">Health Check</a>
+        <a href="#users-admin" class="nav-item">Gerenciamento de Usuários</a>
+        <a href="#webhooks" class="nav-item">Webhooks</a>
+      </div>
     </div>
 
     <div class="nav-group">
-      <h4>Instâncias</h4>
-      <a href="#inst-list" class="nav-item">Listar</a>
-      <a href="#inst-create" class="nav-item">Criar</a>
-      <a href="#inst-get" class="nav-item">Ver Detalhes</a>
-      <a href="#inst-update" class="nav-item">Atualizar</a>
-      <a href="#inst-delete" class="nav-item">Remover</a>
-      <a href="#inst-qr" class="nav-item">Conectar (QR)</a>
-      <a href="#inst-status" class="nav-item">Status da Conexão</a>
-      <a href="#inst-dc" class="nav-item">Desconectar</a>
-      <a href="#inst-rotate" class="nav-item">Rotacionar Token</a>
+      <div class="nav-group-header" onclick="toggleSidebarCategory(this)">
+        <h4>Instâncias</h4>
+        <svg class="nav-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+      </div>
+      <div class="nav-group-content">
+        <a href="#inst-list" class="nav-item">Listar</a>
+        <a href="#inst-create" class="nav-item">Criar</a>
+        <a href="#inst-get" class="nav-item">Ver Detalhes</a>
+        <a href="#inst-update" class="nav-item">Atualizar</a>
+        <a href="#inst-delete" class="nav-item">Remover</a>
+        <a href="#inst-qr" class="nav-item">Conectar (QR)</a>
+        <a href="#inst-status" class="nav-item">Status da Conexão</a>
+        <a href="#inst-dc" class="nav-item">Desconectar</a>
+        <a href="#inst-rotate" class="nav-item">Rotacionar Token</a>
+      </div>
     </div>
 
     <div class="nav-group">
-      <h4>Mensagens</h4>
-      <a href="#msg-list" class="nav-item">Listar Enviadas</a>
-      <a href="#msg-text" class="nav-item">Texto Simples</a>
-      <a href="#msg-media" class="nav-item">Mídia (Imagem/Video)</a>
-      <a href="#msg-audio" class="nav-item">Áudio (PTT)</a>
-      <a href="#msg-doc" class="nav-item">Documento</a>
+      <div class="nav-group-header" onclick="toggleSidebarCategory(this)">
+        <h4>Mensagens</h4>
+        <svg class="nav-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+      </div>
+      <div class="nav-group-content">
+        <a href="#msg-list" class="nav-item">Listar Enviadas</a>
+        <a href="#msg-text" class="nav-item">Texto Simples</a>
+        <a href="#msg-media" class="nav-item">Mídia (Imagem/Video)</a>
+        <a href="#msg-audio" class="nav-item">Áudio (PTT)</a>
+        <a href="#msg-doc" class="nav-item">Documento</a>
+      </div>
     </div>
 
     <div class="nav-group">
-      <h4>Perfil & Contatos</h4>
-      <a href="#prof-info" class="nav-item">Ver Perfil</a>
-      <a href="#prof-biz" class="nav-item">Perfil Business</a>
-      <a href="#prof-pic" class="nav-item">Foto de Perfil</a>
+      <div class="nav-group-header" onclick="toggleSidebarCategory(this)">
+        <h4>Perfil & Contatos</h4>
+        <svg class="nav-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+      </div>
+      <div class="nav-group-content">
+        <a href="#prof-info" class="nav-item">Ver Perfil</a>
+        <a href="#prof-biz" class="nav-item">Perfil Business</a>
+        <a href="#prof-pic" class="nav-item">Foto de Perfil</a>
+      </div>
     </div>
   </aside>
 
@@ -312,9 +433,9 @@
 
     <section id="intro" class="endpoint-section">
       <div class="intro-card">
-        <h2>Documentação da API v1</h2>
-        <p>Bem-vindo ao <strong>ApiMe</strong>. Nossa API REST fornece uma interface poderosa para interagir com o WhatsApp através do motor WhatsMeow em Go.</p>
-        <p>Utilizamos padrões da indústria para garantir que sua integração seja segura, escalável e extremamente rápida.</p>
+        <h2>Documentação da API</h2>
+        <p>API REST para integração com whatsmeow. Suporta envio de texto, mídia, áudios e documentos.</p>
+        <p style="color:var(--muted);font-size:0.95rem;">Autenticação via Bearer token. Notificações em tempo real via webhooks.</p>
         {{if eq .UserRole "admin"}}
         <div style="margin-top: 2rem;">
           <a href="/dashboard/docs/openapi" class="btn-copy-code" style="display: inline-flex; width: auto; color: var(--text); border-color: var(--border);">
@@ -344,9 +465,7 @@
             <li><strong>Tempo limite recomendado:</strong> 2s</li>
             <li><strong>Uso sugerido:</strong> componentes que precisam saber se a API está pronta antes de liberar tráfego.</li>
           </ul>
-          <p class="endpoint-desc" style="margin-top:1rem;">
-            Para detalhes extras, consulte <code>docs/health-check.md</code> no repositório.
-          </p>
+
         </div>
         <div>
           <div class="code-container">
@@ -1085,7 +1204,7 @@ curl -X POST {{.BaseURL}}/api/users \
             <span class="endpoint-path">/instances/:id/profile-pic/:jid</span>
           </div>
           <h3>Foto de Perfil</h3>
-          <p class="endpoint-desc">Retorna a URL da foto de perfil em alta resolução do contato informado.</p>
+          <p class="endpoint-desc">Retorna a URL da foto de perfil do número informado.</p>
         </div>
         <div>
           <div class="code-container">
@@ -1131,30 +1250,121 @@ curl -X POST {{.BaseURL}}/api/users \
     }
   };
 
-  // Active Nav on Scroll
-  document.addEventListener('DOMContentLoaded', () => {
-    const sections = document.querySelectorAll('.endpoint-section');
-    const navItems = document.querySelectorAll('.nav-item');
+    // Toggle sidebar category accordion
+    window.toggleSidebarCategory = function(header) {
+      const group = header.parentElement;
+      const wasExpanded = group.classList.contains('expanded');
 
-    function updateNav() {
-      let current = '';
-      sections.forEach(section => {
-        const sectionTop = section.offsetTop;
-        if (window.pageYOffset >= sectionTop - 200) {
-          current = section.getAttribute('id');
-        }
+      // Close all other groups
+      document.querySelectorAll('.nav-group.expanded').forEach(el => {
+        el.classList.remove('expanded');
       });
 
-      navItems.forEach(item => {
-        item.classList.remove('active');
-        if (item.getAttribute('href').substring(1) === current) {
-          item.classList.add('active');
-        }
-      });
-    }
+      // If it wasn't expanded before, expand it now
+      // (If it was expanded, we just closed it along with others, effectively toggling it off)
+      if (!wasExpanded) {
+        group.classList.add('expanded');
+      }
+    };
 
-    window.addEventListener('scroll', updateNav);
-    updateNav();
-  });
+    // Toggle code expand/collapse
+    window.toggleExpand = function(btn) {
+      const container = btn.closest('.code-container');
+      const codeBody = container.querySelector('.code-body');
+      
+      if (codeBody.classList.contains('expanded')) {
+        codeBody.classList.remove('expanded');
+        container.classList.remove('expanded'); // Remove class from container
+        // Icone +
+        btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>';
+        btn.title = "Expandir";
+      } else {
+        codeBody.classList.add('expanded');
+        container.classList.add('expanded'); // Add class to container
+        // Icone -
+        btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line></svg>';
+        btn.title = "Recolher";
+      }
+    };
+  
+    // Active Nav on Scroll
+    document.addEventListener('DOMContentLoaded', () => {
+      // Expand sidebar group based on hash
+      const hash = window.location.hash;
+      if (hash) {
+        const targetLink = document.querySelector(`.nav-item[href="${hash}"]`);
+        if (targetLink) {
+           const group = targetLink.closest('.nav-group');
+           if (group) {
+             // Close default expanded or others
+             document.querySelectorAll('.nav-group.expanded').forEach(el => el.classList.remove('expanded'));
+             // Expand target
+             group.classList.add('expanded');
+           }
+        }
+      }
+
+      const sections = document.querySelectorAll('.endpoint-section');
+      const navItems = document.querySelectorAll('.nav-item');
+  
+      function updateNav() {
+        let current = '';
+        sections.forEach(section => {
+          const sectionTop = section.offsetTop;
+          // Offset reduced to 80 (approx header height) to prevent capturing next short section
+          if (window.pageYOffset >= sectionTop - 80) {
+            current = section.getAttribute('id');
+          }
+        });
+  
+        navItems.forEach(item => {
+          item.classList.remove('active');
+          if (item.getAttribute('href').substring(1) === current) {
+            item.classList.add('active');
+            
+            // Auto-expand parent group if needed
+            const group = item.closest('.nav-group');
+            if (group && !group.classList.contains('expanded')) {
+              // Close others
+              document.querySelectorAll('.nav-group.expanded').forEach(el => el.classList.remove('expanded'));
+              // Expand current
+              group.classList.add('expanded');
+            }
+          }
+        });
+      }
+  
+      window.addEventListener('scroll', updateNav);
+      updateNav();
+  
+      // Add expand buttons to all code headers
+      document.querySelectorAll('.code-header').forEach(header => {
+        // Check if button already exists to avoid duplicates
+        if (header.querySelector('.btn-expand-code')) return;
+  
+        const container = header.closest('.code-container');
+        if (!container) return; 
+        
+        // Ensure visible by default
+      const codeBody = container.querySelector('.code-body');
+      // Default hidden per user request: do NOT add expanded class
+      // if (codeBody) codeBody.classList.add('expanded'); 
+
+      const btn = document.createElement('button');
+      btn.className = 'btn-expand-code';
+      // Default collapsed, so show plus
+      btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>';
+      btn.title = 'Expandir';
+      btn.type = 'button';
+        
+        btn.onclick = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          window.toggleExpand(btn);
+        };
+        
+        header.appendChild(btn);
+      });
+    });
 </script>
 {{end}}

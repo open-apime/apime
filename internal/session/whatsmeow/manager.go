@@ -8,7 +8,8 @@ import (
 	"sync"
 	"time"
 
-	_ "github.com/mattn/go-sqlite3"
+	_ "github.com/lib/pq"           // PostgreSQL driver for WhatsMeow sessions
+	_ "github.com/mattn/go-sqlite3" // SQLite driver for WhatsMeow sessions
 	"go.mau.fi/whatsmeow"
 	waCompanionReg "go.mau.fi/whatsmeow/proto/waCompanionReg"
 	"go.mau.fi/whatsmeow/store"
@@ -43,11 +44,13 @@ type Manager struct {
 	clients          map[string]*whatsmeow.Client
 	currentQRs       map[string]string
 	qrContexts       map[string]context.CancelFunc
+	pairingSuccess   map[string]time.Time // Tracks recent successful pairings
 	mu               sync.RWMutex
 	log              *zap.Logger
 	encKey           string
 	storageDriver    string
 	baseDir          string
+	pgConnString     string // PostgreSQL connection string for WhatsMeow sessions
 	deviceConfigRepo storage.DeviceConfigRepository
 	instanceRepo     storage.InstanceRepository
 	historySyncRepo  storage.HistorySyncRepository
@@ -56,23 +59,28 @@ type Manager struct {
 	syncWorkers      map[string]context.CancelFunc
 }
 
-func NewManager(log *zap.Logger, encKey, storageDriver, baseDir string, deviceConfigRepo storage.DeviceConfigRepository, instanceRepo storage.InstanceRepository, historySyncRepo storage.HistorySyncRepository) *Manager {
-	if baseDir == "" {
-		baseDir = "/app/data/sessions"
-		log.Warn("sessionDir não definido, usando diretório padrão do container", zap.String("dir", baseDir))
-	} else {
-		log.Info("Usando diretório de sessões configurado", zap.String("dir", baseDir))
+func NewManager(log *zap.Logger, encKey, storageDriver, baseDir, pgConnString string, deviceConfigRepo storage.DeviceConfigRepository, instanceRepo storage.InstanceRepository, historySyncRepo storage.HistorySyncRepository) *Manager {
+	// Only create sessions directory if using SQLite (not PostgreSQL)
+	if storageDriver != "postgres" {
+		if baseDir == "" {
+			baseDir = "/app/data/sessions"
+			log.Warn("sessionDir não definido, usando diretório padrão do container", zap.String("dir", baseDir))
+		} else {
+			log.Info("Usando diretório de sessões configurado", zap.String("dir", baseDir))
+		}
+		os.MkdirAll(baseDir, 0755)
 	}
-	os.MkdirAll(baseDir, 0755)
 
 	return &Manager{
 		clients:          make(map[string]*whatsmeow.Client),
 		currentQRs:       make(map[string]string),
 		qrContexts:       make(map[string]context.CancelFunc),
+		pairingSuccess:   make(map[string]time.Time),
 		log:              log,
 		encKey:           encKey,
 		storageDriver:    storageDriver,
 		baseDir:          baseDir,
+		pgConnString:     pgConnString,
 		deviceConfigRepo: deviceConfigRepo,
 		instanceRepo:     instanceRepo,
 		historySyncRepo:  historySyncRepo,
@@ -93,6 +101,27 @@ func (m *Manager) SetEventHandler(handler EventHandler) {
 	defer m.mu.Unlock()
 	m.eventHandler = handler
 	m.log.Info("event handler configurado para webhooks")
+}
+
+// SessionStorageInfo contains information about session storage for dashboard display.
+type SessionStorageInfo struct {
+	Type     string // "sqlite" or "postgres"
+	Location string // file path for SQLite, table name for PostgreSQL
+}
+
+// GetSessionStorageInfo returns information about session storage for an instance.
+func (m *Manager) GetSessionStorageInfo(instanceID string) SessionStorageInfo {
+	if m.storageDriver == "postgres" && m.pgConnString != "" {
+		return SessionStorageInfo{
+			Type:     "postgres",
+			Location: "PostgreSQL",
+		}
+	}
+	dbPath := filepath.Join(m.baseDir, instanceID+".db")
+	return SessionStorageInfo{
+		Type:     "sqlite",
+		Location: dbPath,
+	}
 }
 
 func (m *Manager) CreateSession(ctx context.Context, instanceID string) (string, error) {
@@ -117,37 +146,50 @@ func (m *Manager) createSession(ctx context.Context, instanceID string, forceRec
 
 	m.log.Info("criando nova sessão WhatsMeow", zap.String("instance_id", instanceID))
 
-	dbPath := filepath.Join(m.baseDir, instanceID+".db")
-	if _, err := os.Stat(dbPath); err == nil {
-		clientLog := &noopLogger{}
-		sqlitePath := fmt.Sprintf("file:%s?_foreign_keys=on", dbPath)
-		container, err := sqlstore.New(ctx, "sqlite3", sqlitePath, clientLog)
-		if err == nil {
-			deviceStore, err := container.GetFirstDevice(ctx)
-			if err == nil && deviceStore.ID != nil && !deviceStore.ID.IsEmpty() {
-				m.log.Info("arquivo SQLite com sessão válida encontrado, tentando restaurar",
-					zap.String("instance_id", instanceID),
-				)
-				client, err := m.restoreSessionIfExists(ctx, instanceID)
-				if err == nil && client != nil && client.IsLoggedIn() {
-					return "", fmt.Errorf("instância já conectada, não é necessário QR code")
+	clientLog := &noopLogger{}
+	var container *sqlstore.Container
+	var err error
+
+	// Use PostgreSQL or SQLite based on storage driver
+	if m.storageDriver == "postgres" && m.pgConnString != "" {
+		m.log.Debug("criando store PostgreSQL", zap.String("instance_id", instanceID))
+		container, err = sqlstore.New(ctx, "postgres", m.pgConnString, clientLog)
+		if err != nil {
+			m.log.Error("erro ao criar store PostgreSQL", zap.String("instance_id", instanceID), zap.Error(err))
+			return "", fmt.Errorf("whatsmeow: criar store PostgreSQL: %w", err)
+		}
+	} else {
+		// SQLite mode - check for existing session file
+		dbPath := filepath.Join(m.baseDir, instanceID+".db")
+		if _, err := os.Stat(dbPath); err == nil {
+			sqlitePath := fmt.Sprintf("file:%s?_foreign_keys=on", dbPath)
+			container, err = sqlstore.New(ctx, "sqlite3", sqlitePath, clientLog)
+			if err == nil {
+				deviceStore, err := container.GetFirstDevice(ctx)
+				if err == nil && deviceStore.ID != nil && !deviceStore.ID.IsEmpty() {
+					m.log.Info("arquivo SQLite com sessão válida encontrado, tentando restaurar",
+						zap.String("instance_id", instanceID),
+					)
+					client, err := m.restoreSessionIfExists(ctx, instanceID)
+					if err == nil && client != nil && client.IsLoggedIn() {
+						return "", fmt.Errorf("instância já conectada, não é necessário QR code")
+					}
+					m.log.Warn("restauração falhou, deletando arquivo SQLite e criando nova sessão",
+						zap.String("instance_id", instanceID),
+					)
+					_ = os.Remove(dbPath)
 				}
-				m.log.Warn("restauração falhou, deletando arquivo SQLite e criando nova sessão",
-					zap.String("instance_id", instanceID),
-				)
-				_ = os.Remove(dbPath)
 			}
 		}
-	}
 
-	clientLog := &noopLogger{}
-	sqlitePath := fmt.Sprintf("file:%s?_foreign_keys=on", dbPath)
-
-	m.log.Debug("criando store SQLite", zap.String("instance_id", instanceID), zap.String("db_path", sqlitePath))
-	container, err := sqlstore.New(ctx, "sqlite3", sqlitePath, clientLog)
-	if err != nil {
-		m.log.Error("erro ao criar store", zap.String("instance_id", instanceID), zap.Error(err))
-		return "", fmt.Errorf("whatsmeow: criar store: %w", err)
+		dbPath = filepath.Join(m.baseDir, instanceID+".db")
+		sqlitePath := fmt.Sprintf("file:%s?_foreign_keys=on", dbPath)
+		m.log.Debug("criando store SQLite", zap.String("instance_id", instanceID), zap.String("db_path", sqlitePath))
+		container, err = sqlstore.New(ctx, "sqlite3", sqlitePath, clientLog)
+		if err != nil {
+			m.log.Error("erro ao criar store", zap.String("instance_id", instanceID), zap.Error(err))
+			return "", fmt.Errorf("whatsmeow: criar store: %w", err)
+		}
 	}
 
 	deviceStore, err := container.GetFirstDevice(ctx)
@@ -165,19 +207,28 @@ func (m *Manager) createSession(ctx context.Context, instanceID string, forceRec
 		if err == nil && client != nil && client.IsLoggedIn() {
 			return "", fmt.Errorf("instância já conectada, não é necessário QR code")
 		}
-		m.log.Warn("restauração falhou, deletando arquivo SQLite e criando nova sessão",
-			zap.String("instance_id", instanceID),
-		)
-		_ = os.Remove(dbPath)
-		container, err = sqlstore.New(ctx, "sqlite3", sqlitePath, clientLog)
-		if err != nil {
-			m.log.Error("erro ao recriar store após deletar", zap.String("instance_id", instanceID), zap.Error(err))
-			return "", fmt.Errorf("whatsmeow: recriar store: %w", err)
-		}
-		deviceStore, err = container.GetFirstDevice(ctx)
-		if err != nil {
-			m.log.Error("erro ao obter device store após recriar", zap.String("instance_id", instanceID), zap.Error(err))
-			return "", fmt.Errorf("whatsmeow: obter device: %w", err)
+
+		// For SQLite, remove and recreate
+		if m.storageDriver != "postgres" {
+			dbPath := filepath.Join(m.baseDir, instanceID+".db")
+			m.log.Warn("restauração falhou, deletando arquivo SQLite e criando nova sessão",
+				zap.String("instance_id", instanceID),
+			)
+			_ = os.Remove(dbPath)
+			sqlitePath := fmt.Sprintf("file:%s?_foreign_keys=on", dbPath)
+			container, err = sqlstore.New(ctx, "sqlite3", sqlitePath, clientLog)
+			if err != nil {
+				m.log.Error("erro ao recriar store após deletar", zap.String("instance_id", instanceID), zap.Error(err))
+				return "", fmt.Errorf("whatsmeow: recriar store: %w", err)
+			}
+			deviceStore, err = container.GetFirstDevice(ctx)
+			if err != nil {
+				m.log.Error("erro ao obter device store após recriar", zap.String("instance_id", instanceID), zap.Error(err))
+				return "", fmt.Errorf("whatsmeow: obter device: %w", err)
+			}
+		} else {
+			// For PostgreSQL, get a new device
+			deviceStore = container.NewDevice()
 		}
 	}
 
@@ -276,6 +327,12 @@ func (m *Manager) monitorQRChannel(instanceID string, qrChan <-chan whatsmeow.QR
 
 		case "success":
 			m.log.Info("pareamento concluído com sucesso", zap.String("instance_id", instanceID))
+
+			// Mark pairing success time to prevent race condition with GetQR
+			m.mu.Lock()
+			m.pairingSuccess[instanceID] = time.Now()
+			m.mu.Unlock()
+
 			m.mu.RLock()
 			client, exists := m.clients[instanceID]
 			m.mu.RUnlock()
@@ -305,6 +362,35 @@ func (m *Manager) monitorQRChannel(instanceID string, qrChan <-chan whatsmeow.QR
 							m.log.Info("presence enviado com sucesso", zap.String("instance_id", instanceID))
 							return
 						}
+					}
+				}()
+
+				// Add post-pairing connection verification
+				go func() {
+					time.Sleep(10 * time.Second)
+					m.mu.RLock()
+					cli, ok := m.clients[instanceID]
+					callback := m.onStatusChange
+					m.mu.RUnlock()
+
+					if !ok || cli == nil {
+						m.log.Warn("verificação pós-pareamento: cliente não encontrado",
+							zap.String("instance_id", instanceID))
+						if callback != nil {
+							callback(instanceID, "error")
+						}
+						return
+					}
+
+					if !cli.IsLoggedIn() {
+						m.log.Warn("verificação pós-pareamento: cliente não está logado",
+							zap.String("instance_id", instanceID))
+						if callback != nil {
+							callback(instanceID, "error")
+						}
+					} else {
+						m.log.Info("verificação pós-pareamento: conexão confirmada",
+							zap.String("instance_id", instanceID))
 					}
 				}()
 			}
@@ -382,6 +468,20 @@ func (m *Manager) GetQR(ctx context.Context, instanceID string) (string, error) 
 		}
 
 		// Cliente existe, não está logado e não há QR nem contexto QR
+		// Verificar se houve pareamento recente (race condition protection)
+		m.mu.RLock()
+		pairingTime, hasPairing := m.pairingSuccess[instanceID]
+		m.mu.RUnlock()
+
+		if hasPairing && time.Since(pairingTime) < 30*time.Second {
+			// Pareamento recente detectado - aguardar conexão ao invés de recriar
+			m.log.Info("pareamento recente detectado, aguardando conexão",
+				zap.String("instance_id", instanceID),
+				zap.Duration("since_pairing", time.Since(pairingTime)),
+			)
+			return "", fmt.Errorf("pareamento em andamento, aguarde a conexão ser estabelecida")
+		}
+
 		// Isso significa que a sessão falhou - desconectar e recriar
 		m.log.Info("cliente existe mas não está logado e sem QR ativo, desconectando para recriar sessão",
 			zap.String("instance_id", instanceID),
@@ -391,18 +491,21 @@ func (m *Manager) GetQR(ctx context.Context, instanceID string) (string, error) 
 		m.mu.Lock()
 		delete(m.clients, instanceID)
 		delete(m.currentQRs, instanceID)
+		delete(m.pairingSuccess, instanceID) // Clean up old pairing mark
 		if cancel, exists := m.qrContexts[instanceID]; exists {
 			cancel()
 			delete(m.qrContexts, instanceID)
 		}
 		m.mu.Unlock()
-		// Deletar arquivo SQLite inválido antes de criar nova sessão
-		dbPath := filepath.Join(m.baseDir, instanceID+".db")
-		if _, err := os.Stat(dbPath); err == nil {
-			m.log.Info("deletando arquivo SQLite inválido antes de criar nova sessão",
-				zap.String("instance_id", instanceID),
-			)
-			_ = os.Remove(dbPath)
+		// Deletar arquivo SQLite inválido antes de criar nova sessão (only for SQLite mode)
+		if m.storageDriver != "postgres" {
+			dbPath := filepath.Join(m.baseDir, instanceID+".db")
+			if _, err := os.Stat(dbPath); err == nil {
+				m.log.Info("deletando arquivo SQLite inválido antes de criar nova sessão",
+					zap.String("instance_id", instanceID),
+				)
+				_ = os.Remove(dbPath)
+			}
 		}
 		// Agora criar nova sessão
 		return m.CreateSession(ctx, instanceID)
@@ -578,28 +681,46 @@ func (m *Manager) restoreSessionIfExists(ctx context.Context, instanceID string)
 		return client, nil
 	}
 
-	dbPath := filepath.Join(m.baseDir, instanceID+".db")
-
-	// Verificar se o arquivo existe
-	if _, err := os.Stat(dbPath); os.IsNotExist(err) {
-		return nil, fmt.Errorf("sessão não encontrada")
-	}
-
-	m.log.Info("tentando restaurar sessão do SQLite",
-		zap.String("instance_id", instanceID),
-		zap.String("db_path", dbPath),
-	)
-
 	clientLog := &noopLogger{}
-	sqlitePath := fmt.Sprintf("file:%s?_foreign_keys=on", dbPath)
-	container, err := sqlstore.New(ctx, "sqlite3", sqlitePath, clientLog)
-	if err != nil {
-		m.log.Error("erro ao criar container do SQLite",
+	var container *sqlstore.Container
+	var err error
+
+	// Use PostgreSQL or SQLite based on storage driver
+	if m.storageDriver == "postgres" && m.pgConnString != "" {
+		m.log.Info("tentando restaurar sessão do PostgreSQL",
+			zap.String("instance_id", instanceID),
+		)
+		container, err = sqlstore.New(ctx, "postgres", m.pgConnString, clientLog)
+		if err != nil {
+			m.log.Error("erro ao criar container PostgreSQL",
+				zap.String("instance_id", instanceID),
+				zap.Error(err),
+			)
+			return nil, fmt.Errorf("sessão não encontrada")
+		}
+	} else {
+		dbPath := filepath.Join(m.baseDir, instanceID+".db")
+
+		// Verificar se o arquivo existe
+		if _, err := os.Stat(dbPath); os.IsNotExist(err) {
+			return nil, fmt.Errorf("sessão não encontrada")
+		}
+
+		m.log.Info("tentando restaurar sessão do SQLite",
 			zap.String("instance_id", instanceID),
 			zap.String("db_path", dbPath),
-			zap.Error(err),
 		)
-		return nil, fmt.Errorf("sessão não encontrada")
+
+		sqlitePath := fmt.Sprintf("file:%s?_foreign_keys=on", dbPath)
+		container, err = sqlstore.New(ctx, "sqlite3", sqlitePath, clientLog)
+		if err != nil {
+			m.log.Error("erro ao criar container do SQLite",
+				zap.String("instance_id", instanceID),
+				zap.String("db_path", dbPath),
+				zap.Error(err),
+			)
+			return nil, fmt.Errorf("sessão não encontrada")
+		}
 	}
 
 	deviceStore, err := container.GetFirstDevice(ctx)
@@ -615,7 +736,7 @@ func (m *Manager) restoreSessionIfExists(ctx context.Context, instanceID string)
 	if deviceStore.ID == nil || deviceStore.ID.IsEmpty() {
 		m.log.Warn("sessão não está logada (sem JID)",
 			zap.String("instance_id", instanceID),
-			zap.String("db_path", dbPath),
+			zap.String("storage", m.storageDriver),
 		)
 		return nil, fmt.Errorf("sessão não encontrada")
 	}
@@ -724,6 +845,7 @@ func (m *Manager) restoreSessionIfExists(ctx context.Context, instanceID string)
 func (m *Manager) RestoreAllSessions(ctx context.Context, instanceIDs []string) {
 	m.log.Info("iniciando restauração de todas as sessões",
 		zap.Int("total_instances", len(instanceIDs)),
+		zap.String("storage", m.storageDriver),
 	)
 
 	for _, instanceID := range instanceIDs {
@@ -739,20 +861,23 @@ func (m *Manager) RestoreAllSessions(ctx context.Context, instanceIDs []string) 
 			continue
 		}
 
-		// Verificar se existe arquivo SQLite
-		dbPath := filepath.Join(m.baseDir, instanceID+".db")
-		if _, err := os.Stat(dbPath); os.IsNotExist(err) {
-			m.log.Debug("arquivo SQLite não existe, pulando",
-				zap.String("instance_id", instanceID),
-			)
-			continue
+		// Para SQLite, verificar se existe arquivo
+		if m.storageDriver != "postgres" {
+			dbPath := filepath.Join(m.baseDir, instanceID+".db")
+			if _, err := os.Stat(dbPath); os.IsNotExist(err) {
+				m.log.Debug("arquivo SQLite não existe, pulando",
+					zap.String("instance_id", instanceID),
+				)
+				continue
+			}
 		}
+		// Para PostgreSQL, sempre tenta restaurar (a sessão pode existir no banco)
 
 		// Tentar restaurar em background (não bloquear a inicialização)
 		go func(id string) {
 			client, err := m.restoreSessionIfExists(ctx, id)
 			if err != nil {
-				m.log.Warn("não foi possível restaurar sessão na inicialização",
+				m.log.Debug("não foi possível restaurar sessão na inicialização",
 					zap.String("instance_id", id),
 					zap.Error(err),
 				)
@@ -774,23 +899,25 @@ func (m *Manager) RestoreAllSessions(ctx context.Context, instanceIDs []string) 
 
 // DiagnosticsInfo contém informações de diagnóstico sobre uma instância
 type DiagnosticsInfo struct {
-	InstanceID        string    `json:"instanceId"`
-	HasClientInMemory bool      `json:"hasClientInMemory"`
-	IsLoggedIn        bool      `json:"isLoggedIn"`
-	HasSQLiteFile     bool      `json:"hasSQLiteFile"`
-	SQLiteFilePath    string    `json:"sqliteFilePath"`
-	SQLiteFileSize    int64     `json:"sqliteFileSize"`
-	SQLiteFileModTime time.Time `json:"sqliteFileModTime"`
-	HasDeviceStore    bool      `json:"hasDeviceStore"`
-	DeviceJID         string    `json:"deviceJid"`
-	DevicePushName    string    `json:"devicePushName"`
-	HasQRCode         bool      `json:"hasQRCode"`
-	LastError         string    `json:"lastError,omitempty"`
-	ClientConnected   bool      `json:"clientConnected"`
-	HistorySyncStatus string    `json:"historySyncStatus,omitempty"`
-	HistorySyncCycleID string   `json:"historySyncCycleId,omitempty"`
+	InstanceID           string     `json:"instanceId"`
+	HasClientInMemory    bool       `json:"hasClientInMemory"`
+	IsLoggedIn           bool       `json:"isLoggedIn"`
+	HasSQLiteFile        bool       `json:"hasSQLiteFile"`
+	SQLiteFilePath       string     `json:"sqliteFilePath"`
+	SQLiteFileSize       int64      `json:"sqliteFileSize"`
+	SQLiteFileModTime    time.Time  `json:"sqliteFileModTime"`
+	StorageType          string     `json:"storageType"`
+	StorageLocation      string     `json:"storageLocation"`
+	HasDeviceStore       bool       `json:"hasDeviceStore"`
+	DeviceJID            string     `json:"deviceJid"`
+	DevicePushName       string     `json:"devicePushName"`
+	HasQRCode            bool       `json:"hasQRCode"`
+	LastError            string     `json:"lastError,omitempty"`
+	ClientConnected      bool       `json:"clientConnected"`
+	HistorySyncStatus    string     `json:"historySyncStatus,omitempty"`
+	HistorySyncCycleID   string     `json:"historySyncCycleId,omitempty"`
 	HistorySyncUpdatedAt *time.Time `json:"historySyncUpdatedAt,omitempty"`
-	PendingPayloads   int       `json:"pendingPayloads"`
+	PendingPayloads      int        `json:"pendingPayloads"`
 }
 
 // GetDiagnostics retorna informações de diagnóstico sobre uma instância
@@ -812,6 +939,11 @@ func (m *Manager) GetDiagnostics(instanceID string) interface{} {
 		// Verificar se o cliente está conectado (não há método direto, mas podemos inferir)
 		diag.ClientConnected = client.IsLoggedIn()
 	}
+
+	// Set storage info
+	storageInfo := m.GetSessionStorageInfo(instanceID)
+	diag.StorageType = storageInfo.Type
+	diag.StorageLocation = storageInfo.Location
 
 	dbPath := filepath.Join(m.baseDir, instanceID+".db")
 	if fileInfo, err := os.Stat(dbPath); err == nil {
@@ -987,9 +1119,9 @@ func (m *Manager) handleEvent(instanceID string, evt any) {
 
 	switch v := evt.(type) {
 	case *events.Connected:
-		m.log.Info("instância conectada - dispositivo liberado, sincronizando dados essenciais em background", 
+		m.log.Info("instância conectada - dispositivo liberado, sincronizando dados essenciais em background",
 			zap.String("instance_id", instanceID))
-		
+
 		// Enviar presence em background
 		m.mu.RLock()
 		client, exists := m.clients[instanceID]
@@ -1012,7 +1144,7 @@ func (m *Manager) handleEvent(instanceID string, evt any) {
 				}
 			}()
 		}
-		
+
 		if callback != nil {
 			callback(instanceID, "active")
 		}
@@ -1097,7 +1229,7 @@ func (m *Manager) handleEvent(instanceID string, evt any) {
 			zap.String("instance_id", instanceID),
 			zap.String("name", string(v.Name)),
 		)
-		
+
 		// Quando critical_block sync completa, a instância está pronta para uso
 		if v.Name == "critical_block" {
 			m.log.Info("sincronização crítica concluída - instância pronta para receber mensagens",

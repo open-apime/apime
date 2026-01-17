@@ -1,5 +1,4 @@
-# Docker Compose para deploy escalável com PostgreSQL
-# Usar: docker-compose -f docker-compose.scalable.yml up
+# docker-compose -f docker-compose.scalable.yml up
 
 services:
   api:
@@ -19,8 +18,12 @@ services:
     volumes:
       - apime_media:/app/data/media
     depends_on:
-      - postgres
-      - redis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - apime_net
     restart: unless-stopped
 
   postgres:
@@ -34,6 +37,13 @@ services:
       - postgres:/var/lib/postgresql/data
     ports:
       - "5432:5432"
+    networks:
+      - apime_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-apime} -d ${DB_NAME:-apime}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   redis:
     image: redis:7
@@ -42,8 +52,19 @@ services:
       - redis:/data
     ports:
       - "6379:6379"
+    networks:
+      - apime_net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
 volumes:
   apime_media:
   postgres:
   redis:
+
+networks:
+  apime_net:
+    driver: bridge

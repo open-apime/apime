@@ -68,7 +68,13 @@ func main() {
 		log.Fatalf("storage: %v", err)
 	}
 
-	sessionManager := whatsmeow.NewManager(logr, cfg.WhatsApp.SessionKeyEnc, cfg.Storage.Driver, sessionDir, repos.DeviceConfig, repos.Instance, repos.HistorySync)
+	// Build PostgreSQL connection string for WhatsMeow sessions (empty if using SQLite)
+	pgConnString := ""
+	if cfg.Storage.Driver == "postgres" {
+		pgConnString = cfg.DB.DSN()
+	}
+
+	sessionManager := whatsmeow.NewManager(logr, cfg.WhatsApp.SessionKeyEnc, cfg.Storage.Driver, sessionDir, pgConnString, repos.DeviceConfig, repos.Instance, repos.HistorySync)
 
 	instanceService := instance.NewServiceWithSessionMessagesAndEventLogs(repos.Instance, repos.Message, repos.EventLog, sessionManager)
 
@@ -88,11 +94,12 @@ func main() {
 		}
 	})
 
-	mediaStorage, err := media.NewStorage(mediaDir, 2*time.Hour, logr)
+	mediaTTL := time.Duration(cfg.Storage.MediaTTLSeconds) * time.Second
+	mediaStorage, err := media.NewStorage(mediaDir, mediaTTL, logr)
 	if err != nil {
 		log.Fatalf("media storage: %v", err)
 	}
-	logr.Info("media storage inicializado", zap.String("dir", mediaDir), zap.Duration("ttl", 2*time.Hour))
+	logr.Info("media storage inicializado", zap.String("dir", mediaDir), zap.Duration("ttl", mediaTTL))
 
 	mediaHandler := handler.NewMediaHandler(mediaStorage)
 

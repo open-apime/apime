@@ -5,6 +5,7 @@ Api em Go para orquestrar múltiplas instâncias.
 Baseada na biblioteca [WhatsMeow](https://github.com/tulir/whatsmeow) com dashboard e eventos via Webhooks.
 
 <img src="docs/dashboard.png" />
+<img src="docs/dashboard_light.png" />
 
 1. **Configurar o ambiente:**
    ```bash

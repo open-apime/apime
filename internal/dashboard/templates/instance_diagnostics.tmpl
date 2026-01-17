@@ -30,9 +30,17 @@
   <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:1rem;">
     <h1>Diagnóstico - {{.Data.Instance.Name}}</h1>
     <div class="actions">
-       <a href="/dashboard/instances/{{.Data.Instance.ID}}/qr" class="icon-btn" data-tooltip="Gerar QR Code">
-         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="6" height="6" rx="1" /><rect x="14" y="4" width="6" height="6" rx="1" /><rect x="4" y="14" width="6" height="6" rx="1" /><path d="M14 17h6" /><path d="M14 14v3" /><path d="M17 14v3" /></svg>
-       </a>
+       {{if .Data.Diagnostics}}
+         {{if not (and .Data.Diagnostics.HasClientInMemory .Data.Diagnostics.IsLoggedIn)}}
+         <a href="/dashboard/instances/{{.Data.Instance.ID}}/qr" class="icon-btn" data-tooltip="Gerar QR Code">
+           <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="6" height="6" rx="1" /><rect x="14" y="4" width="6" height="6" rx="1" /><rect x="4" y="14" width="6" height="6" rx="1" /><path d="M14 17h6" /><path d="M14 14v3" /><path d="M17 14v3" /></svg>
+         </a>
+         {{end}}
+       {{else}}
+         <a href="/dashboard/instances/{{.Data.Instance.ID}}/qr" class="icon-btn" data-tooltip="Gerar QR Code">
+           <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="6" height="6" rx="1" /><rect x="14" y="4" width="6" height="6" rx="1" /><rect x="4" y="14" width="6" height="6" rx="1" /><path d="M14 17h6" /><path d="M14 14v3" /><path d="M17 14v3" /></svg>
+         </a>
+       {{end}}
        <a href="/dashboard/instances/{{.Data.Instance.ID}}/diagnostics" class="icon-btn" data-tooltip="Atualizar Diagnóstico">
           <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8.1 8.1 0 0 0 -15.5 -2m-.5 -4v4h4" /><path d="M4 13a8.1 8.1 0 0 0 15.5 2m.5 4v-4h-4" /></svg>
        </a>
@@ -76,14 +84,16 @@
           </td>
         </tr>
         <tr>
-          <th>SQLite Existe</th>
+          <th>Sessão Existe</th>
           <td>
-            {{if $diag.HasSQLiteFile}}<span class="badge-yes"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Sim</span>
+            {{if or $diag.HasSQLiteFile (eq $diag.StorageType "postgres")}}<span class="badge-yes"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Sim</span>
             {{else}}<span class="badge-no"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg> Não</span>{{end}}
           </td>
         </tr>
-        {{if $diag.HasSQLiteFile}}
-        <tr><th>Caminho</th><td><code class="code-sm">{{$diag.SQLiteFilePath}}</code></td></tr>
+        {{if $diag.StorageLocation}}
+        <tr><th>Caminho</th><td><code class="code-sm">{{$diag.StorageLocation}}</code></td></tr>
+        {{end}}
+        {{if and $diag.HasSQLiteFile (ne $diag.StorageType "postgres")}}
         <tr><th>Tamanho</th><td>{{printf "%.2f KB" (div $diag.SQLiteFileSize 1024.0)}}</td></tr>
         {{end}}
         {{if $diag.LastError}}
@@ -105,37 +115,47 @@
     {{if .Data.Diagnostics}}
       {{$diag := .Data.Diagnostics}}
       {{if and $diag.HasClientInMemory $diag.IsLoggedIn}}
-        <div style="display:flex;align-items:center;gap:0.75rem;">
-          <span class="badge-yes">Status OK</span>
-          <span>Cliente está em memória e logado corretamente.</span>
+        <div style="display:flex;flex-direction:column;gap:0.5rem;">
+          <div style="display:flex;align-items:center;gap:0.75rem;">
+            <span class="badge-yes">Conectado</span>
+          </div>
+          <p style="margin:0;color:var(--text);">Instância ativa e conectada ao WhatsApp. Pronta para enviar e receber mensagens.</p>
         </div>
-      {{else if $diag.HasSQLiteFile}}
+      {{else if or $diag.HasSQLiteFile (eq $diag.StorageType "postgres")}}
         {{if $diag.HasDeviceStore}}
           {{if $diag.DeviceJID}}
-            <div style="display:flex;align-items:flex-start;gap:0.75rem;flex-direction:column;">
-               <div style="display:flex;align-items:center;gap:0.5rem;">
-                <span class="status-badge status-pending">Atenção</span>
-                <span>Sessão existe mas não está ativa em memória.</span>
-               </div>
-               <p style="margin:0; color:var(--muted); font-size:0.9rem;">O sistema deve restaurar automaticamente. Se persistir, reinicie a instância.</p>
+            <div style="display:flex;flex-direction:column;gap:0.5rem;">
+              <div style="display:flex;align-items:center;gap:0.75rem;">
+                <span class="status-badge status-pending">Reconectando</span>
+              </div>
+              <p style="margin:0;color:var(--muted);font-size:0.9rem;">Sessão existe mas não está ativa. O sistema irá restaurar automaticamente. Se persistir, reinicie a instância.</p>
             </div>
           {{else}}
-             <div style="display:flex;align-items:center;gap:0.75rem;">
-                <span class="badge-no">Problema</span>
-                <span>Sessão existe mas sem login (JID). Gere um novo QR.</span>
-             </div>
+            <div style="display:flex;flex-direction:column;gap:0.5rem;">
+              <div style="display:flex;align-items:center;gap:0.75rem;">
+                <span class="badge-no">Desconectado</span>
+              </div>
+              <p style="margin:0;color:var(--muted);font-size:0.9rem;">Sessão existe mas não está autenticada. Clique em "Gerar QR Code" para reconectar.</p>
+            </div>
           {{end}}
         {{else}}
-           <span class="badge-no">Erro Crítico</span> <span>Device Store corrompido.</span>
+          <div style="display:flex;flex-direction:column;gap:0.5rem;">
+            <div style="display:flex;align-items:center;gap:0.75rem;">
+              <span class="badge-no">Erro</span>
+            </div>
+            <p style="margin:0;color:var(--muted);font-size:0.9rem;">Dados de sessão corrompidos. Delete e recrie a instância.</p>
+          </div>
         {{end}}
       {{else}}
-         <div style="display:flex;align-items:center;gap:0.75rem;">
-            <span class="badge-no">Sem Sessão</span>
-            <span>Nenhuma sessão encontrada. Conecte pelo QR Code.</span>
-         </div>
+        <div style="display:flex;flex-direction:column;gap:0.5rem;">
+          <div style="display:flex;align-items:center;gap:0.75rem;">
+            <span class="badge-no">Não Configurado</span>
+          </div>
+          <p style="margin:0;color:var(--muted);font-size:0.9rem;">Nenhuma sessão WhatsApp encontrada. Clique em "Gerar QR Code" para conectar.</p>
+        </div>
       {{end}}
     {{else}}
-      <p style="color:var(--muted);">Dados insuficientes.</p>
+      <p style="color:var(--muted);">Dados de diagnóstico indisponíveis.</p>
     {{end}}
   </div>
 
