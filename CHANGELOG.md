@@ -1,5 +1,14 @@
 # Changelog
 
+## [v1.0.4] - 2026-01-17
+### Adicionado
+- Suporte a `DASHBOARD_TIMEZONE`: a variável de ambiente agora é lida pelo backend, propagada aos templates e exposta via JS para garantir que todas as datas/hora do dashboard sigam o fuso configurado.
+
+### Atualizado
+- Helpers `formatTime` e `formatOptionalTime` usam a localização configurada, enquanto o layout fornece utilitário `formatDateTime` para o frontend.
+- Todos os formulários críticos (instâncias, tokens, usuários, configurações) contam com bloqueio de duplo envio, estados de carregamento e feedback consistente.
+- Botão de desconexão das instâncias ganhou spinner embutido, evitando flicker do texto “Desconectando...” e mantendo o visual harmônico.
+
 ## [v1.0.3] - 2026-01-17
 ### Internals
 - Limpeza dos templates do dashboard: remoção de comentários redundantes nos arquivos de docs, diagnostics, QR, instances, layout, login e users para reduzir ruído visual mantendo apenas o código relevante.
