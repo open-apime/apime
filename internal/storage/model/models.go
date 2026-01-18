@@ -12,21 +12,22 @@ const (
 )
 
 type Instance struct {
-	ID             string         `json:"id"`
-	Name           string         `json:"name"`
-	OwnerUserID    string         `json:"ownerUserId"`
-	OwnerEmail     string         `json:"ownerEmail,omitempty"`
-	WebhookURL     string         `json:"webhookUrl,omitempty"`
-	WebhookSecret  string         `json:"-"`
-	TokenHash      string         `json:"-"`
-	TokenUpdatedAt *time.Time     `json:"tokenUpdatedAt,omitempty"`
-	Status         InstanceStatus `json:"status"`
-	SessionBlob    []byte         `json:"-"`
-	HistorySyncStatus   HistorySyncStatus `json:"historySyncStatus"`
-	HistorySyncCycleID  string             `json:"historySyncCycleId"`
-	HistorySyncUpdatedAt *time.Time `json:"historySyncUpdatedAt,omitempty"`
-	CreatedAt      time.Time      `json:"createdAt"`
-	UpdatedAt      time.Time      `json:"updatedAt"`
+	ID                   string            `json:"id"`
+	Name                 string            `json:"name"`
+	OwnerUserID          string            `json:"ownerUserId"`
+	OwnerEmail           string            `json:"ownerEmail,omitempty"`
+	WhatsAppJID          string            `json:"whatsappJid,omitempty"`
+	WebhookURL           string            `json:"webhookUrl,omitempty"`
+	WebhookSecret        string            `json:"-"`
+	TokenHash            string            `json:"-"`
+	TokenUpdatedAt       *time.Time        `json:"tokenUpdatedAt,omitempty"`
+	Status               InstanceStatus    `json:"status"`
+	SessionBlob          []byte            `json:"-"`
+	HistorySyncStatus    HistorySyncStatus `json:"historySyncStatus"`
+	HistorySyncCycleID   string            `json:"historySyncCycleId"`
+	HistorySyncUpdatedAt *time.Time        `json:"historySyncUpdatedAt,omitempty"`
+	CreatedAt            time.Time         `json:"createdAt"`
+	UpdatedAt            time.Time         `json:"updatedAt"`
 }
 
 type Message struct {
@@ -97,19 +98,19 @@ const (
 type HistorySyncPayloadStatus string
 
 const (
-	HistorySyncPayloadPending   HistorySyncPayloadStatus = "pending"
+	HistorySyncPayloadPending    HistorySyncPayloadStatus = "pending"
 	HistorySyncPayloadProcessing HistorySyncPayloadStatus = "processing"
-	HistorySyncPayloadDone      HistorySyncPayloadStatus = "done"
-	HistorySyncPayloadError     HistorySyncPayloadStatus = "error"
+	HistorySyncPayloadDone       HistorySyncPayloadStatus = "done"
+	HistorySyncPayloadError      HistorySyncPayloadStatus = "error"
 )
 
 type WhatsappHistorySync struct {
-	ID         string                        `json:"id"`
-	InstanceID string                        `json:"instanceId"`
-	PayloadType string                       `json:"payloadType"`
-	Payload    []byte                        `json:"payload"`
-	CycleID    string                        `json:"cycleId"`
-	Status     HistorySyncPayloadStatus      `json:"status"`
-	CreatedAt  time.Time                     `json:"createdAt"`
-	ProcessedAt *time.Time                   `json:"processedAt"`
+	ID          string                   `json:"id"`
+	InstanceID  string                   `json:"instanceId"`
+	PayloadType string                   `json:"payloadType"`
+	Payload     []byte                   `json:"payload"`
+	CycleID     string                   `json:"cycleId"`
+	Status      HistorySyncPayloadStatus `json:"status"`
+	CreatedAt   time.Time                `json:"createdAt"`
+	ProcessedAt *time.Time               `json:"processedAt"`
 }

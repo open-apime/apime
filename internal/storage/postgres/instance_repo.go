@@ -30,20 +30,20 @@ func (r *instanceRepo) Create(ctx context.Context, inst model.Instance) (model.I
 	}
 
 	query := `
-		INSERT INTO instances (id, name, owner_user_id, status, session_blob, webhook_url, webhook_secret, instance_token_hash, instance_token_updated_at,
+		INSERT INTO instances (id, name, owner_user_id, whatsapp_jid, status, session_blob, webhook_url, webhook_secret, instance_token_hash, instance_token_updated_at,
 		                       history_sync_status, history_sync_cycle_id, history_sync_updated_at, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-		RETURNING id, name, owner_user_id, status, COALESCE(webhook_url, ''), COALESCE(webhook_secret, ''), COALESCE(instance_token_hash, ''), instance_token_updated_at,
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+		RETURNING id, name, owner_user_id, COALESCE(whatsapp_jid, ''), status, COALESCE(webhook_url, ''), COALESCE(webhook_secret, ''), COALESCE(instance_token_hash, ''), instance_token_updated_at,
 		          history_sync_status, COALESCE(history_sync_cycle_id::text, ''), history_sync_updated_at, created_at, updated_at
 	`
 
 	err := r.db.Pool.QueryRow(ctx, query,
-		inst.ID, inst.Name, inst.OwnerUserID, string(inst.Status), inst.SessionBlob,
+		inst.ID, inst.Name, inst.OwnerUserID, nullIfEmpty(inst.WhatsAppJID), string(inst.Status), inst.SessionBlob,
 		nullIfEmpty(inst.WebhookURL), nullIfEmpty(inst.WebhookSecret), nullIfEmpty(inst.TokenHash), inst.TokenUpdatedAt,
 		string(inst.HistorySyncStatus), nullIfEmpty(inst.HistorySyncCycleID), inst.HistorySyncUpdatedAt,
 		inst.CreatedAt, inst.UpdatedAt,
 	).Scan(
-		&inst.ID, &inst.Name, &inst.OwnerUserID, &inst.Status, &inst.WebhookURL, &inst.WebhookSecret, &inst.TokenHash, &inst.TokenUpdatedAt,
+		&inst.ID, &inst.Name, &inst.OwnerUserID, &inst.WhatsAppJID, &inst.Status, &inst.WebhookURL, &inst.WebhookSecret, &inst.TokenHash, &inst.TokenUpdatedAt,
 		&inst.HistorySyncStatus, &inst.HistorySyncCycleID, &inst.HistorySyncUpdatedAt,
 		&inst.CreatedAt, &inst.UpdatedAt,
 	)
@@ -57,7 +57,7 @@ func (r *instanceRepo) Create(ctx context.Context, inst model.Instance) (model.I
 
 func (r *instanceRepo) GetByTokenHash(ctx context.Context, tokenHash string) (model.Instance, error) {
 	query := `
-		SELECT id, name, owner_user_id, status, session_blob, COALESCE(webhook_url, ''), COALESCE(webhook_secret, ''), COALESCE(instance_token_hash, ''), instance_token_updated_at,
+		SELECT id, name, owner_user_id, COALESCE(whatsapp_jid, ''), status, session_blob, COALESCE(webhook_url, ''), COALESCE(webhook_secret, ''), COALESCE(instance_token_hash, ''), instance_token_updated_at,
 		       history_sync_status, COALESCE(history_sync_cycle_id::text, ''), history_sync_updated_at, created_at, updated_at
 		FROM instances
 		WHERE instance_token_hash = $1
@@ -65,7 +65,7 @@ func (r *instanceRepo) GetByTokenHash(ctx context.Context, tokenHash string) (mo
 
 	var inst model.Instance
 	err := r.db.Pool.QueryRow(ctx, query, tokenHash).Scan(
-		&inst.ID, &inst.Name, &inst.OwnerUserID, &inst.Status, &inst.SessionBlob,
+		&inst.ID, &inst.Name, &inst.OwnerUserID, &inst.WhatsAppJID, &inst.Status, &inst.SessionBlob,
 		&inst.WebhookURL, &inst.WebhookSecret, &inst.TokenHash, &inst.TokenUpdatedAt,
 		&inst.HistorySyncStatus, &inst.HistorySyncCycleID, &inst.HistorySyncUpdatedAt,
 		&inst.CreatedAt, &inst.UpdatedAt,
@@ -81,7 +81,7 @@ func (r *instanceRepo) GetByTokenHash(ctx context.Context, tokenHash string) (mo
 
 func (r *instanceRepo) GetByID(ctx context.Context, id string) (model.Instance, error) {
 	query := `
-		SELECT id, name, owner_user_id, status, session_blob, COALESCE(webhook_url, ''), COALESCE(webhook_secret, ''), COALESCE(instance_token_hash, ''), instance_token_updated_at,
+		SELECT id, name, owner_user_id, COALESCE(whatsapp_jid, ''), status, session_blob, COALESCE(webhook_url, ''), COALESCE(webhook_secret, ''), COALESCE(instance_token_hash, ''), instance_token_updated_at,
 		       history_sync_status, COALESCE(history_sync_cycle_id::text, ''), history_sync_updated_at, created_at, updated_at
 		FROM instances
 		WHERE id = $1
@@ -90,7 +90,7 @@ func (r *instanceRepo) GetByID(ctx context.Context, id string) (model.Instance, 
 	var inst model.Instance
 
 	err := r.db.Pool.QueryRow(ctx, query, id).Scan(
-		&inst.ID, &inst.Name, &inst.OwnerUserID, &inst.Status, &inst.SessionBlob,
+		&inst.ID, &inst.Name, &inst.OwnerUserID, &inst.WhatsAppJID, &inst.Status, &inst.SessionBlob,
 		&inst.WebhookURL, &inst.WebhookSecret, &inst.TokenHash, &inst.TokenUpdatedAt,
 		&inst.HistorySyncStatus, &inst.HistorySyncCycleID, &inst.HistorySyncUpdatedAt,
 		&inst.CreatedAt, &inst.UpdatedAt,
@@ -108,7 +108,7 @@ func (r *instanceRepo) GetByID(ctx context.Context, id string) (model.Instance, 
 
 func (r *instanceRepo) List(ctx context.Context) ([]model.Instance, error) {
 	query := `
-		SELECT i.id, i.name, i.owner_user_id, COALESCE(u.email, ''), i.status, COALESCE(i.webhook_url, ''), COALESCE(i.webhook_secret, ''), COALESCE(i.instance_token_hash, ''), i.instance_token_updated_at,
+		SELECT i.id, i.name, i.owner_user_id, COALESCE(u.email, ''), COALESCE(i.whatsapp_jid, ''), i.status, COALESCE(i.webhook_url, ''), COALESCE(i.webhook_secret, ''), COALESCE(i.instance_token_hash, ''), i.instance_token_updated_at,
 		       i.history_sync_status, COALESCE(i.history_sync_cycle_id::text, ''), i.history_sync_updated_at, i.created_at, i.updated_at
 		FROM instances i
 		LEFT JOIN users u ON i.owner_user_id = u.id
@@ -125,7 +125,7 @@ func (r *instanceRepo) List(ctx context.Context) ([]model.Instance, error) {
 	for rows.Next() {
 		var inst model.Instance
 		if err := rows.Scan(
-			&inst.ID, &inst.Name, &inst.OwnerUserID, &inst.OwnerEmail, &inst.Status,
+			&inst.ID, &inst.Name, &inst.OwnerUserID, &inst.OwnerEmail, &inst.WhatsAppJID, &inst.Status,
 			&inst.WebhookURL, &inst.WebhookSecret, &inst.TokenHash, &inst.TokenUpdatedAt,
 			&inst.HistorySyncStatus, &inst.HistorySyncCycleID, &inst.HistorySyncUpdatedAt,
 			&inst.CreatedAt, &inst.UpdatedAt,
@@ -141,7 +141,7 @@ func (r *instanceRepo) List(ctx context.Context) ([]model.Instance, error) {
 
 func (r *instanceRepo) ListByOwner(ctx context.Context, ownerUserID string) ([]model.Instance, error) {
 	query := `
-		SELECT i.id, i.name, i.owner_user_id, COALESCE(u.email, ''), i.status, COALESCE(i.webhook_url, ''), COALESCE(i.webhook_secret, ''), COALESCE(i.instance_token_hash, ''), i.instance_token_updated_at,
+		SELECT i.id, i.name, i.owner_user_id, COALESCE(u.email, ''), COALESCE(i.whatsapp_jid, ''), i.status, COALESCE(i.webhook_url, ''), COALESCE(i.webhook_secret, ''), COALESCE(i.instance_token_hash, ''), i.instance_token_updated_at,
 		       i.history_sync_status, COALESCE(i.history_sync_cycle_id::text, ''), i.history_sync_updated_at, i.created_at, i.updated_at
 		FROM instances i
 		LEFT JOIN users u ON i.owner_user_id = u.id
@@ -159,7 +159,7 @@ func (r *instanceRepo) ListByOwner(ctx context.Context, ownerUserID string) ([]m
 	for rows.Next() {
 		var inst model.Instance
 		if err := rows.Scan(
-			&inst.ID, &inst.Name, &inst.OwnerUserID, &inst.OwnerEmail, &inst.Status,
+			&inst.ID, &inst.Name, &inst.OwnerUserID, &inst.OwnerEmail, &inst.WhatsAppJID, &inst.Status,
 			&inst.WebhookURL, &inst.WebhookSecret, &inst.TokenHash, &inst.TokenUpdatedAt,
 			&inst.HistorySyncStatus, &inst.HistorySyncCycleID, &inst.HistorySyncUpdatedAt,
 			&inst.CreatedAt, &inst.UpdatedAt,
@@ -178,20 +178,20 @@ func (r *instanceRepo) Update(ctx context.Context, inst model.Instance) (model.I
 
 	query := `
 		UPDATE instances
-		SET name = $2, owner_user_id = $3, status = $4, session_blob = $5, webhook_url = $6, webhook_secret = $7, instance_token_hash = $8, instance_token_updated_at = $9,
-		    history_sync_status = $10, history_sync_cycle_id = $11, history_sync_updated_at = $12, updated_at = $13
+		SET name = $2, owner_user_id = $3, whatsapp_jid = $4, status = $5, session_blob = $6, webhook_url = $7, webhook_secret = $8, instance_token_hash = $9, instance_token_updated_at = $10,
+		    history_sync_status = $11, history_sync_cycle_id = $12, history_sync_updated_at = $13, updated_at = $14
 		WHERE id = $1
-		RETURNING id, name, owner_user_id, status, COALESCE(webhook_url, ''), COALESCE(webhook_secret, ''), COALESCE(instance_token_hash, ''), instance_token_updated_at,
+		RETURNING id, name, owner_user_id, COALESCE(whatsapp_jid, ''), status, COALESCE(webhook_url, ''), COALESCE(webhook_secret, ''), COALESCE(instance_token_hash, ''), instance_token_updated_at,
 		          history_sync_status, COALESCE(history_sync_cycle_id::text, ''), history_sync_updated_at, created_at, updated_at
 	`
 
 	err := r.db.Pool.QueryRow(ctx, query,
-		inst.ID, inst.Name, inst.OwnerUserID, string(inst.Status), inst.SessionBlob,
+		inst.ID, inst.Name, inst.OwnerUserID, nullIfEmpty(inst.WhatsAppJID), string(inst.Status), inst.SessionBlob,
 		nullIfEmpty(inst.WebhookURL), nullIfEmpty(inst.WebhookSecret), nullIfEmpty(inst.TokenHash), inst.TokenUpdatedAt,
 		string(inst.HistorySyncStatus), nullIfEmpty(inst.HistorySyncCycleID), inst.HistorySyncUpdatedAt,
 		inst.UpdatedAt,
 	).Scan(
-		&inst.ID, &inst.Name, &inst.OwnerUserID, &inst.Status, &inst.WebhookURL, &inst.WebhookSecret, &inst.TokenHash, &inst.TokenUpdatedAt,
+		&inst.ID, &inst.Name, &inst.OwnerUserID, &inst.WhatsAppJID, &inst.Status, &inst.WebhookURL, &inst.WebhookSecret, &inst.TokenHash, &inst.TokenUpdatedAt,
 		&inst.HistorySyncStatus, &inst.HistorySyncCycleID, &inst.HistorySyncUpdatedAt,
 		&inst.CreatedAt, &inst.UpdatedAt,
 	)

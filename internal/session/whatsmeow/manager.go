@@ -41,16 +41,16 @@ type EventHandler interface {
 }
 
 type Manager struct {
-	clients        map[string]*whatsmeow.Client
-	currentQRs     map[string]string
-	qrContexts     map[string]context.CancelFunc
-	pairingSuccess map[string]time.Time
-	mu             sync.RWMutex
-	log            *zap.Logger
-	encKey         string
-	storageDriver  string
-	baseDir        string
-	pgConnString   string
+	clients          map[string]*whatsmeow.Client
+	currentQRs       map[string]string
+	qrContexts       map[string]context.CancelFunc
+	pairingSuccess   map[string]time.Time
+	mu               sync.RWMutex
+	log              *zap.Logger
+	encKey           string
+	storageDriver    string
+	baseDir          string
+	pgConnString     string
 	deviceConfigRepo storage.DeviceConfigRepository
 	instanceRepo     storage.InstanceRepository
 	historySyncRepo  storage.HistorySyncRepository
@@ -147,6 +147,7 @@ func (m *Manager) createSession(ctx context.Context, instanceID string, forceRec
 
 	clientLog := &noopLogger{}
 	var container *sqlstore.Container
+	var deviceStore *store.Device
 	var err error
 
 	if m.storageDriver == "postgres" && m.pgConnString != "" {
@@ -156,6 +157,9 @@ func (m *Manager) createSession(ctx context.Context, instanceID string, forceRec
 			m.log.Error("erro ao criar store PostgreSQL", zap.String("instance_id", instanceID), zap.Error(err))
 			return "", fmt.Errorf("whatsmeow: criar store PostgreSQL: %w", err)
 		}
+
+		deviceStore = container.NewDevice()
+		m.log.Debug("novo device criado para PostgreSQL", zap.String("instance_id", instanceID))
 	} else {
 		dbPath := filepath.Join(m.baseDir, instanceID+".db")
 		if _, err := os.Stat(dbPath); err == nil {
@@ -187,25 +191,23 @@ func (m *Manager) createSession(ctx context.Context, instanceID string, forceRec
 			m.log.Error("erro ao criar store", zap.String("instance_id", instanceID), zap.Error(err))
 			return "", fmt.Errorf("whatsmeow: criar store: %w", err)
 		}
-	}
 
-	deviceStore, err := container.GetFirstDevice(ctx)
-	if err != nil {
-		m.log.Error("erro ao obter device store", zap.String("instance_id", instanceID), zap.Error(err))
-		return "", fmt.Errorf("whatsmeow: obter device: %w", err)
-	}
-
-	if deviceStore.ID != nil && !deviceStore.ID.IsEmpty() {
-		m.log.Warn("deviceStore já tem JID, tentando restaurar ao invés de criar nova sessão",
-			zap.String("instance_id", instanceID),
-			zap.String("jid", deviceStore.ID.String()),
-		)
-		client, err := m.restoreSessionIfExists(ctx, instanceID)
-		if err == nil && client != nil && client.IsLoggedIn() {
-			return "", fmt.Errorf("instância já conectada, não é necessário QR code")
+		deviceStore, err = container.GetFirstDevice(ctx)
+		if err != nil {
+			m.log.Error("erro ao obter device store", zap.String("instance_id", instanceID), zap.Error(err))
+			return "", fmt.Errorf("whatsmeow: obter device: %w", err)
 		}
 
-		if m.storageDriver != "postgres" {
+		if deviceStore.ID != nil && !deviceStore.ID.IsEmpty() {
+			m.log.Warn("deviceStore já tem JID, tentando restaurar ao invés de criar nova sessão",
+				zap.String("instance_id", instanceID),
+				zap.String("jid", deviceStore.ID.String()),
+			)
+			client, err := m.restoreSessionIfExists(ctx, instanceID)
+			if err == nil && client != nil && client.IsLoggedIn() {
+				return "", fmt.Errorf("instância já conectada, não é necessário QR code")
+			}
+
 			dbPath := filepath.Join(m.baseDir, instanceID+".db")
 			m.log.Warn("restauração falhou, deletando arquivo SQLite e criando nova sessão",
 				zap.String("instance_id", instanceID),
@@ -222,8 +224,6 @@ func (m *Manager) createSession(ctx context.Context, instanceID string, forceRec
 				m.log.Error("erro ao obter device store após recriar", zap.String("instance_id", instanceID), zap.Error(err))
 				return "", fmt.Errorf("whatsmeow: obter device: %w", err)
 			}
-		} else {
-			deviceStore = container.NewDevice()
 		}
 	}
 
@@ -330,6 +330,39 @@ func (m *Manager) monitorQRChannel(instanceID string, qrChan <-chan whatsmeow.QR
 			m.mu.RLock()
 			client, exists := m.clients[instanceID]
 			m.mu.RUnlock()
+
+			if exists && client != nil && client.Store != nil && client.Store.ID != nil {
+				go func() {
+					if m.instanceRepo != nil {
+						ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+						defer cancel()
+
+						inst, err := m.instanceRepo.GetByID(ctx, instanceID)
+						if err != nil {
+							m.log.Error("erro ao buscar instância para salvar JID",
+								zap.String("instance_id", instanceID),
+								zap.Error(err),
+							)
+							return
+						}
+
+						inst.WhatsAppJID = client.Store.ID.String()
+						_, err = m.instanceRepo.Update(ctx, inst)
+						if err != nil {
+							m.log.Error("erro ao salvar JID da instância",
+								zap.String("instance_id", instanceID),
+								zap.String("jid", inst.WhatsAppJID),
+								zap.Error(err),
+							)
+						} else {
+							m.log.Info("JID salvo com sucesso",
+								zap.String("instance_id", instanceID),
+								zap.String("jid", inst.WhatsAppJID),
+							)
+						}
+					}
+				}()
+			}
 
 			go m.initHistorySyncCycle(instanceID)
 			if exists && client != nil {
@@ -517,7 +550,7 @@ func (m *Manager) logoutClient(instanceID string, client *whatsmeow.Client) {
 	}
 
 	m.log.Info("logout concluído",
-	zap.String("instance_id", instanceID),
+		zap.String("instance_id", instanceID),
 	)
 }
 
@@ -575,12 +608,32 @@ func (m *Manager) deletePostgresSession(instanceID string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
+	var jidStr string
+	if m.instanceRepo != nil {
+		inst, err := m.instanceRepo.GetByID(ctx, instanceID)
+		if err != nil {
+			m.log.Warn("instância não encontrada para deletar sessão PostgreSQL",
+				zap.String("instance_id", instanceID),
+				zap.Error(err),
+			)
+			return nil
+		}
+		jidStr = inst.WhatsAppJID
+	}
+
+	if jidStr == "" {
+		m.log.Debug("instância sem JID salvo, nada a deletar no PostgreSQL",
+			zap.String("instance_id", instanceID),
+		)
+		return nil
+	}
+
 	container, err := sqlstore.New(ctx, "postgres", m.pgConnString, &noopLogger{})
 	if err != nil {
 		return fmt.Errorf("whatsmeow: criar container PostgreSQL: %w", err)
 	}
 
-	jid, err := types.ParseJID(instanceID + "@s.whatsapp.net")
+	jid, err := types.ParseJID(jidStr)
 	if err != nil {
 		return fmt.Errorf("whatsmeow: parse device JID: %w", err)
 	}
@@ -602,6 +655,7 @@ func (m *Manager) deletePostgresSession(instanceID string) error {
 
 	m.log.Info("sessão removida do PostgreSQL",
 		zap.String("instance_id", instanceID),
+		zap.String("jid", jidStr),
 	)
 	return nil
 }
@@ -646,7 +700,7 @@ func (m *Manager) GetClient(instanceID string) (*whatsmeow.Client, error) {
 	return m.restoreSessionIfExists(context.Background(), instanceID)
 }
 
-// restoreSessionIfExists tenta restaurar uma sessão existente do SQLite
+// restoreSessionIfExists tenta restaurar uma sessão existente do SQLite ou PostgreSQL
 func (m *Manager) restoreSessionIfExists(ctx context.Context, instanceID string) (*whatsmeow.Client, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -658,6 +712,7 @@ func (m *Manager) restoreSessionIfExists(ctx context.Context, instanceID string)
 
 	clientLog := &noopLogger{}
 	var container *sqlstore.Container
+	var deviceStore *store.Device
 	var err error
 
 	// Use PostgreSQL or SQLite based on storage driver
@@ -665,6 +720,30 @@ func (m *Manager) restoreSessionIfExists(ctx context.Context, instanceID string)
 		m.log.Info("tentando restaurar sessão do PostgreSQL",
 			zap.String("instance_id", instanceID),
 		)
+
+		if m.instanceRepo == nil {
+			m.log.Error("instanceRepo não configurado para restauração PostgreSQL",
+				zap.String("instance_id", instanceID),
+			)
+			return nil, fmt.Errorf("sessão não encontrada")
+		}
+
+		inst, err := m.instanceRepo.GetByID(ctx, instanceID)
+		if err != nil {
+			m.log.Error("erro ao buscar instância para restauração",
+				zap.String("instance_id", instanceID),
+				zap.Error(err),
+			)
+			return nil, fmt.Errorf("sessão não encontrada")
+		}
+
+		if inst.WhatsAppJID == "" {
+			m.log.Warn("instância sem JID salvo, não é possível restaurar sessão PostgreSQL",
+				zap.String("instance_id", instanceID),
+			)
+			return nil, fmt.Errorf("sessão não encontrada")
+		}
+
 		container, err = sqlstore.New(ctx, "postgres", m.pgConnString, clientLog)
 		if err != nil {
 			m.log.Error("erro ao criar container PostgreSQL",
@@ -673,6 +752,39 @@ func (m *Manager) restoreSessionIfExists(ctx context.Context, instanceID string)
 			)
 			return nil, fmt.Errorf("sessão não encontrada")
 		}
+
+		jid, err := types.ParseJID(inst.WhatsAppJID)
+		if err != nil {
+			m.log.Error("erro ao parsear JID para restauração",
+				zap.String("instance_id", instanceID),
+				zap.String("jid", inst.WhatsAppJID),
+				zap.Error(err),
+			)
+			return nil, fmt.Errorf("sessão não encontrada")
+		}
+
+		deviceStore, err = container.GetDevice(ctx, jid)
+		if err != nil {
+			m.log.Error("erro ao buscar device por JID",
+				zap.String("instance_id", instanceID),
+				zap.String("jid", inst.WhatsAppJID),
+				zap.Error(err),
+			)
+			return nil, fmt.Errorf("sessão não encontrada")
+		}
+
+		if deviceStore == nil {
+			m.log.Warn("device não encontrado no PostgreSQL",
+				zap.String("instance_id", instanceID),
+				zap.String("jid", inst.WhatsAppJID),
+			)
+			return nil, fmt.Errorf("sessão não encontrada")
+		}
+
+		m.log.Debug("device encontrado no PostgreSQL",
+			zap.String("instance_id", instanceID),
+			zap.String("jid", inst.WhatsAppJID),
+		)
 	} else {
 		dbPath := filepath.Join(m.baseDir, instanceID+".db")
 
@@ -696,15 +808,15 @@ func (m *Manager) restoreSessionIfExists(ctx context.Context, instanceID string)
 			)
 			return nil, fmt.Errorf("sessão não encontrada")
 		}
-	}
 
-	deviceStore, err := container.GetFirstDevice(ctx)
-	if err != nil {
-		m.log.Error("erro ao obter device store",
-			zap.String("instance_id", instanceID),
-			zap.Error(err),
-		)
-		return nil, fmt.Errorf("sessão não encontrada")
+		deviceStore, err = container.GetFirstDevice(ctx)
+		if err != nil {
+			m.log.Error("erro ao obter device store",
+				zap.String("instance_id", instanceID),
+				zap.Error(err),
+			)
+			return nil, fmt.Errorf("sessão não encontrada")
+		}
 	}
 
 	// Verificar se a sessão está logada (tem JID)
