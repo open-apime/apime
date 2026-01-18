@@ -118,29 +118,20 @@
           </div>
           <p style="margin:0;color:var(--text);">Instância ativa e conectada ao WhatsApp. Pronta para enviar e receber mensagens.</p>
         </div>
-      {{else if or $diag.HasSQLiteFile (eq $diag.StorageType "postgres")}}
-        {{if $diag.HasDeviceStore}}
-          {{if $diag.DeviceJID}}
-            <div style="display:flex;flex-direction:column;gap:0.5rem;">
-              <div style="display:flex;align-items:center;gap:0.75rem;">
-                <span class="status-badge status-pending">Reconectando</span>
-              </div>
-              <p style="margin:0;color:var(--muted);font-size:0.9rem;">Sessão existe mas não está ativa. O sistema irá restaurar automaticamente. Se persistir, reinicie a instância.</p>
+      {{else if or $diag.HasSQLiteFile $diag.HasDeviceStore}}
+        {{if $diag.DeviceJID}}
+          <div style="display:flex;flex-direction:column;gap:0.5rem;">
+            <div style="display:flex;align-items:center;gap:0.75rem;">
+              <span class="status-badge status-pending">Reconectando</span>
             </div>
-          {{else}}
-            <div style="display:flex;flex-direction:column;gap:0.5rem;">
-              <div style="display:flex;align-items:center;gap:0.75rem;">
-                <span class="badge-no">Desconectado</span>
-              </div>
-              <p style="margin:0;color:var(--muted);font-size:0.9rem;">Sessão existe mas não está autenticada. Clique em "Gerar QR Code" para reconectar.</p>
-            </div>
-          {{end}}
+            <p style="margin:0;color:var(--muted);font-size:0.9rem;">Sessão existe mas não está ativa. O sistema irá restaurar automaticamente. Se persistir, reinicie a instância.</p>
+          </div>
         {{else}}
           <div style="display:flex;flex-direction:column;gap:0.5rem;">
             <div style="display:flex;align-items:center;gap:0.75rem;">
-              <span class="badge-no">Erro</span>
+              <span class="badge-no">Desconectado</span>
             </div>
-            <p style="margin:0;color:var(--muted);font-size:0.9rem;">Dados de sessão corrompidos. Delete e recrie a instância.</p>
+            <p style="margin:0;color:var(--muted);font-size:0.9rem;">Sessão existe mas não está autenticada. Clique em "Gerar QR Code" para reconectar.</p>
           </div>
         {{end}}
       {{else}}

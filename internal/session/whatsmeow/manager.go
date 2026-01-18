@@ -260,7 +260,7 @@ func (m *Manager) createSession(ctx context.Context, instanceID string, forceRec
 	m.qrContexts[instanceID] = qrCancel
 	m.mu.Unlock()
 
-	go m.monitorQRChannel(instanceID, qrChan, qrCancel)
+	go m.monitorQRChannel(instanceID, client, qrChan, qrCancel)
 
 	m.log.Info("cliente conectado, aguardando QR code", zap.String("instance_id", instanceID))
 
@@ -305,7 +305,7 @@ func (m *Manager) createSession(ctx context.Context, instanceID string, forceRec
 	}
 }
 
-func (m *Manager) monitorQRChannel(instanceID string, qrChan <-chan whatsmeow.QRChannelItem, cancel context.CancelFunc) {
+func (m *Manager) monitorQRChannel(instanceID string, client *whatsmeow.Client, qrChan <-chan whatsmeow.QRChannelItem, cancel context.CancelFunc) {
 	defer cancel()
 
 	for evt := range qrChan {
@@ -327,11 +327,7 @@ func (m *Manager) monitorQRChannel(instanceID string, qrChan <-chan whatsmeow.QR
 			m.pairingSuccess[instanceID] = time.Now()
 			m.mu.Unlock()
 
-			m.mu.RLock()
-			client, exists := m.clients[instanceID]
-			m.mu.RUnlock()
-
-			if exists && client != nil && client.Store != nil && client.Store.ID != nil {
+			if client != nil && client.Store != nil && client.Store.ID != nil {
 				go func() {
 					if m.instanceRepo != nil {
 						ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -365,7 +361,7 @@ func (m *Manager) monitorQRChannel(instanceID string, qrChan <-chan whatsmeow.QR
 			}
 
 			go m.initHistorySyncCycle(instanceID)
-			if exists && client != nil {
+			if client != nil {
 				go func() {
 					for attempt := 1; attempt <= 5; attempt++ {
 						time.Sleep(time.Duration(attempt*2) * time.Second)
@@ -574,6 +570,18 @@ func (m *Manager) DeleteSession(instanceID string) error {
 	delete(m.currentQRs, instanceID)
 	m.mu.Unlock()
 
+	// Se o cliente não estiver em memória, tentar restaurar para realizar o logout
+	if client == nil {
+		m.log.Debug("cliente não encontrado em memória, tentando restaurar para logout", zap.String("instance_id", instanceID))
+		if restoredClient, err := m.restoreSessionIfExists(context.Background(), instanceID); err == nil && restoredClient != nil {
+			client = restoredClient
+			// Remove do map novamente pois restoreSessionIfExists adiciona
+			m.mu.Lock()
+			delete(m.clients, instanceID)
+			m.mu.Unlock()
+		}
+	}
+
 	if client != nil {
 		m.logoutClient(instanceID, client)
 	}
@@ -676,9 +684,30 @@ func (m *Manager) GetClient(instanceID string) (*whatsmeow.Client, error) {
 		// Verificar se o cliente está realmente logado
 		isLoggedIn := client.IsLoggedIn()
 		if !isLoggedIn {
-			m.log.Warn("cliente existe mas não está logado, removendo e tentando restaurar",
+			m.log.Warn("cliente existe mas não está logado, verificando status de pareamento",
 				zap.String("instance_id", instanceID),
 			)
+
+			// Verificar se há contexto de QR ativo ou pareamento recente
+			m.mu.RLock()
+			_, hasQR := m.qrContexts[instanceID]
+			pairingTime, hasPairing := m.pairingSuccess[instanceID]
+			m.mu.RUnlock()
+
+			// Se tiver QR ativo ou pareamento recente (menos de 60s), não deleta
+			if hasQR {
+				m.log.Debug("contexto QR ativo, mantendo cliente no map", zap.String("instance_id", instanceID))
+				return client, nil
+			}
+			if hasPairing && time.Since(pairingTime) < 60*time.Second {
+				m.log.Debug("pareamento recente detectado, mantendo cliente no map",
+					zap.String("instance_id", instanceID),
+					zap.Duration("since_pairing", time.Since(pairingTime)),
+				)
+				return client, nil
+			}
+
+			m.log.Warn("cliente sem sessão ativa e sem pareamento recente, removendo", zap.String("instance_id", instanceID))
 			// Remover do map e tentar restaurar
 			m.mu.Lock()
 			delete(m.clients, instanceID)
