@@ -260,6 +260,31 @@
     button:hover {
       opacity: 0.9;
     }
+    button:disabled {
+      opacity: 0.65;
+      cursor: not-allowed;
+    }
+    .action-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 36px;
+      height: 36px;
+      border-radius: 0.45rem;
+    }
+    .loading-spinner {
+      width: 16px;
+      height: 16px;
+      border-radius: 999px;
+      border: 2px solid rgba(255, 255, 255, 0.35);
+      border-top-color: currentColor;
+      animation: dashboardSpin 0.8s linear infinite;
+    }
+    @keyframes dashboardSpin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
     .toast-container {
       position: fixed;
       top: 16px;
@@ -381,7 +406,7 @@
     }
   </style>
 </head>
-<body>
+<body data-timezone="{{.Timezone}}">
   {{if .UserEmail}}
   <header>
     <a class="brand" href="/dashboard" aria-label="ApiMe" title="ApiMe">
@@ -522,7 +547,7 @@
     }
 
     .confirm-body h3 {
-      margin: 0 0 0.75rem;
+      margin: 0 0 0.75rem 0;
       font-size: 1.2rem;
       font-weight: 600;
       color: var(--text);
@@ -599,6 +624,43 @@
 
   <script>
     (function () {
+      var bodyEl = document.body;
+      var dashboardTimezone = (bodyEl && bodyEl.dataset && bodyEl.dataset.timezone) ? bodyEl.dataset.timezone : '';
+
+      function parseDateValue(value) {
+        if (!value) return null;
+        if (value instanceof Date) {
+          return isNaN(value) ? null : value;
+        }
+        var parsed = new Date(value);
+        if (isNaN(parsed)) {
+          return null;
+        }
+        return parsed;
+      }
+
+      function formatDateTime(value, options) {
+        var opts = options || {};
+        var date = parseDateValue(value);
+        if (!date) {
+          return opts.emptyText || '—';
+        }
+        var formatOptions = Object.assign({
+          timeZone: dashboardTimezone || 'UTC',
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit'
+        }, opts.formatOptions || {});
+        try {
+          return new Intl.DateTimeFormat('pt-BR', formatOptions).format(date);
+        } catch (err) {
+          console.warn('fallback Intl formatter', err);
+          return date.toLocaleString('pt-BR');
+        }
+      }
+
       function getTheme() {
         try {
           var saved = localStorage.getItem('apime_theme');
@@ -620,12 +682,75 @@
         var sun = document.getElementById('themeIconSun');
         var moon = document.getElementById('themeIconMoon');
         var sunmoon = document.getElementById('themeIconSunMoon');
-        
+
         if (sun && moon && sunmoon) {
           sun.style.display = cur === 'dark' ? 'block' : 'none';
           moon.style.display = cur === 'light' ? 'block' : 'none';
           sunmoon.style.display = 'none';
         }
+      }
+
+      function resolveSubmitButton(form, options) {
+        if (!form) return null;
+        if (options && options.button instanceof HTMLElement) return options.button;
+        if (options && typeof options.buttonSelector === 'string') {
+          return form.querySelector(options.buttonSelector);
+        }
+        return form.querySelector('[type="submit"]');
+      }
+
+      function setFormSubmittingState(form, options) {
+        if (!form || form.dataset.submitting === 'true') {
+          return;
+        }
+        form.dataset.submitting = 'true';
+        var button = resolveSubmitButton(form, options);
+        if (button) {
+          var loadingStyle = (options && options.loadingStyle) || button.dataset.loadingStyle || '';
+          button.disabled = true;
+          button.classList.add('is-loading');
+          if (loadingStyle === 'icon') {
+            button.setAttribute('aria-busy', 'true');
+          } else {
+            if (!button.dataset.originalHtml) {
+              button.dataset.originalHtml = button.innerHTML;
+            }
+            var label = (options && options.loadingText) || button.dataset.loadingText || (button.textContent || '').trim() || 'Processando...';
+            button.innerHTML = '<span class="loading-spinner" aria-hidden="true"></span><span>' + label + '</span>';
+          }
+        }
+      }
+
+      function clearFormSubmittingState(form, options) {
+        if (!form) {
+          return;
+        }
+        delete form.dataset.submitting;
+        var button = resolveSubmitButton(form, options);
+        if (button) {
+          button.disabled = false;
+          button.classList.remove('is-loading');
+          var loadingStyle = (options && options.loadingStyle) || button.dataset.loadingStyle || '';
+          if (loadingStyle === 'icon') {
+            button.removeAttribute('aria-busy');
+          } else {
+            if (button.dataset.originalHtml) {
+              button.innerHTML = button.dataset.originalHtml;
+              delete button.dataset.originalHtml;
+            }
+          }
+        }
+      }
+
+      function preventDoubleSubmit(form, options) {
+        if (!form) return;
+        form.addEventListener('submit', function(e) {
+          if (form.dataset.submitting === 'true') {
+            e.preventDefault();
+            return;
+          }
+          setFormSubmittingState(form, options);
+        });
       }
 
       function createToast(kind, message, timeoutMs) {
@@ -689,6 +814,11 @@
 
 
       window.createToast = createToast;
+      window.setFormSubmittingState = setFormSubmittingState;
+      window.clearFormSubmittingState = clearFormSubmittingState;
+      window.preventDoubleSubmit = preventDoubleSubmit;
+      window.formatDateTime = formatDateTime;
+      window.dashboardTimezone = dashboardTimezone;
 
       var theme = getTheme();
       applyTheme(theme);

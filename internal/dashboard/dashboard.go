@@ -50,6 +50,7 @@ type Options struct {
 	BaseURL             string
 	Logger              *zap.Logger
 	EnableDashboard     bool
+	Timezone            string
 }
 
 type Handler struct {
@@ -62,6 +63,7 @@ type Handler struct {
 	logger         *zap.Logger
 	docsDir        string
 	baseURL        string
+	timezone       string
 }
 
 type PageData struct {
@@ -74,6 +76,46 @@ type PageData struct {
 	Flash           *Flash
 	ContentTemplate string
 	Data            any
+	Timezone        string
+}
+
+var (
+	dashboardLocation = time.Local
+	dashboardTimezone string
+)
+
+func configureTimezone(tz string, logger *zap.Logger) string {
+	if tz == "" {
+		dashboardTimezone = ""
+		dashboardLocation = time.Local
+		return ""
+	}
+	loc, err := time.LoadLocation(tz)
+	if err != nil {
+		if logger != nil {
+			logger.Warn("timezone inválido para dashboard, usando local", zap.String("timezone", tz), zap.Error(err))
+		}
+		dashboardTimezone = ""
+		dashboardLocation = time.Local
+		return ""
+	}
+	dashboardLocation = loc
+	dashboardTimezone = tz
+	if logger != nil {
+		logger.Info("timezone do dashboard configurado", zap.String("timezone", tz))
+	}
+	return tz
+}
+
+func currentTimezone() string {
+	return dashboardTimezone
+}
+
+func currentLocation() *time.Location {
+	if dashboardLocation != nil {
+		return dashboardLocation
+	}
+	return time.Local
 }
 
 type Flash struct {
@@ -90,6 +132,8 @@ func Register(router *gin.Engine, opts Options) error {
 		return nil
 	}
 
+	tz := configureTimezone(opts.Timezone, opts.Logger)
+
 	h := &Handler{
 		auth:           opts.AuthService,
 		instances:      opts.InstanceService,
@@ -100,6 +144,7 @@ func Register(router *gin.Engine, opts Options) error {
 		logger:         opts.Logger,
 		docsDir:        opts.DocsDirectory,
 		baseURL:        opts.BaseURL,
+		timezone:       tz,
 	}
 
 	router.GET("/", func(c *gin.Context) {
@@ -155,13 +200,13 @@ func templateFuncMap() template.FuncMap {
 			if t.IsZero() {
 				return "-"
 			}
-			return t.Local().Format("02/01/2006 15:04")
+			return t.In(currentLocation()).Format("02/01/2006 15:04")
 		},
 		"formatOptionalTime": func(t *time.Time) string {
 			if t == nil {
 				return "—"
 			}
-			return t.Local().Format("02/01/2006 15:04")
+			return t.In(currentLocation()).Format("02/01/2006 15:04")
 		},
 		"statusBadge": func(status model.InstanceStatus) string {
 			switch status {
@@ -730,6 +775,7 @@ func (h *Handler) pageData(c *gin.Context, title, content string, data any) Page
 		Flash:           flash,
 		ContentTemplate: content,
 		Data:            data,
+		Timezone:        h.timezone,
 	}
 }
 

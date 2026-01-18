@@ -190,6 +190,7 @@ func main() {
 			BaseURL:             cfg.App.BaseURL,
 			Logger:              logr,
 			EnableDashboard:     true,
+			Timezone:            cfg.Dashboard.Timezone,
 		})
 	} else {
 		logr.Info("dashboard desativado via configuração")

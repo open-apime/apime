@@ -768,7 +768,7 @@
         </svg>
       </button>
     </div>
-    <form method="post" action="/dashboard/users">
+    <form method="post" action="/dashboard/users" id="createUserForm">
       <div class="modal-body">
         <div class="modal-form">
           <div class="form-group">
@@ -928,6 +928,8 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 
   const createUserModal = document.getElementById('createUserModal');
+  const createUserForm = document.getElementById('createUserForm');
+  const createUserSubmit = createUserForm ? createUserForm.querySelector('.btn-submit') : null;
   const btnOpenCreateUser = document.getElementById('btnOpenCreateUser');
   const closeCreateUserModal = document.getElementById('closeCreateUserModal');
   const cancelCreateUser = document.getElementById('cancelCreateUser');
@@ -949,6 +951,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
   const changePasswordModal = document.getElementById('changePasswordModal');
   const changePasswordForm = document.getElementById('changePasswordForm');
+  const changePasswordSubmit = changePasswordForm ? changePasswordForm.querySelector('.btn-submit') : null;
   const closePasswordModal = document.getElementById('closePasswordModal');
   const cancelPasswordChange = document.getElementById('cancelPasswordChange');
   const passwordModalSubtitle = document.getElementById('passwordModalSubtitle');
@@ -993,6 +996,7 @@ document.addEventListener('DOMContentLoaded', function() {
   const tokenButtons = document.querySelectorAll('.user-token-btn');
   const tokenList = document.getElementById('userTokenList');
   const tokenForm = document.getElementById('userTokenCreateForm');
+  const tokenSubmit = tokenForm ? tokenForm.querySelector('.btn-submit') : null;
   const userIdInput = document.getElementById('userTokenUserId');
   const tokenSubtitle = document.getElementById('userTokenModalSubtitle');
   const generatedBox = document.getElementById('userTokenGenerated');
@@ -1125,6 +1129,10 @@ document.addEventListener('DOMContentLoaded', function() {
   const deleteUserForms = document.querySelectorAll('.delete-user-form');
   deleteUserForms.forEach(form => {
     form.addEventListener('submit', async function(e) {
+      if (this.dataset.submitting === 'true') {
+        e.preventDefault();
+        return;
+      }
       e.preventDefault();
       const email = this.getAttribute('data-user-email') || 'este usuário';
       const confirmed = await customConfirm(
@@ -1133,19 +1141,26 @@ document.addEventListener('DOMContentLoaded', function() {
         { danger: true, confirmText: 'Remover' }
       );
       if (confirmed) {
+        if (typeof setFormSubmittingState === 'function') {
+          setFormSubmittingState(this, { loadingText: 'Removendo...' });
+        }
         this.submit();
       }
     });
   });
 
   if (changePasswordForm) {
-    const originalSubmit = changePasswordForm.onsubmit;
-    changePasswordForm.onsubmit = null;
+    if (typeof preventDoubleSubmit === 'function') {
+      preventDoubleSubmit(changePasswordForm, { button: changePasswordSubmit, loadingText: 'Alterando...' });
+    }
     changePasswordForm.addEventListener('submit', async function(e) {
       const newPass = document.getElementById('new-password').value;
       const confirmPass = document.getElementById('confirm-password').value;
       if (newPass !== confirmPass) {
         e.preventDefault();
+        if (typeof clearFormSubmittingState === 'function') {
+          clearFormSubmittingState(changePasswordForm);
+        }
         await customAlert('As senhas não coincidem.', 'Erro de validação');
       }
     });
@@ -1202,8 +1217,9 @@ document.addEventListener('DOMContentLoaded', function() {
   };
 
   if (tokenForm) {
-    const originalTokenSubmit = tokenForm.onsubmit;
-    tokenForm.onsubmit = null;
+    if (typeof preventDoubleSubmit === 'function') {
+      preventDoubleSubmit(tokenForm, { button: tokenSubmit, loadingText: 'Gerando...' });
+    }
     tokenForm.addEventListener('submit', async function(e) {
       e.preventDefault();
       const nameInput = document.getElementById('new-user-token-name');
@@ -1227,11 +1243,21 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         fetchTokens();
         tokenForm.reset();
+        if (typeof clearFormSubmittingState === 'function') {
+          clearFormSubmittingState(tokenForm);
+        }
       } catch (err) {
         console.error(err);
+        if (typeof clearFormSubmittingState === 'function') {
+          clearFormSubmittingState(tokenForm);
+        }
         await customAlert('Erro ao gerar token.', 'Erro');
       }
     });
+  }
+
+  if (createUserForm && typeof preventDoubleSubmit === 'function') {
+    preventDoubleSubmit(createUserForm, { button: createUserSubmit, loadingText: 'Criando...' });
   }
 
   if (copyBtn) {

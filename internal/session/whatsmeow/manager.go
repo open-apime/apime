@@ -41,16 +41,16 @@ type EventHandler interface {
 }
 
 type Manager struct {
-	clients          map[string]*whatsmeow.Client
-	currentQRs       map[string]string
-	qrContexts       map[string]context.CancelFunc
-	pairingSuccess   map[string]time.Time // Tracks recent successful pairings
-	mu               sync.RWMutex
-	log              *zap.Logger
-	encKey           string
-	storageDriver    string
-	baseDir          string
-	pgConnString     string // PostgreSQL connection string for WhatsMeow sessions
+	clients        map[string]*whatsmeow.Client
+	currentQRs     map[string]string
+	qrContexts     map[string]context.CancelFunc
+	pairingSuccess map[string]time.Time
+	mu             sync.RWMutex
+	log            *zap.Logger
+	encKey         string
+	storageDriver  string
+	baseDir        string
+	pgConnString   string
 	deviceConfigRepo storage.DeviceConfigRepository
 	instanceRepo     storage.InstanceRepository
 	historySyncRepo  storage.HistorySyncRepository
@@ -60,7 +60,6 @@ type Manager struct {
 }
 
 func NewManager(log *zap.Logger, encKey, storageDriver, baseDir, pgConnString string, deviceConfigRepo storage.DeviceConfigRepository, instanceRepo storage.InstanceRepository, historySyncRepo storage.HistorySyncRepository) *Manager {
-	// Only create sessions directory if using SQLite (not PostgreSQL)
 	if storageDriver != "postgres" {
 		if baseDir == "" {
 			baseDir = "/app/data/sessions"
@@ -150,7 +149,6 @@ func (m *Manager) createSession(ctx context.Context, instanceID string, forceRec
 	var container *sqlstore.Container
 	var err error
 
-	// Use PostgreSQL or SQLite based on storage driver
 	if m.storageDriver == "postgres" && m.pgConnString != "" {
 		m.log.Debug("criando store PostgreSQL", zap.String("instance_id", instanceID))
 		container, err = sqlstore.New(ctx, "postgres", m.pgConnString, clientLog)
@@ -159,7 +157,6 @@ func (m *Manager) createSession(ctx context.Context, instanceID string, forceRec
 			return "", fmt.Errorf("whatsmeow: criar store PostgreSQL: %w", err)
 		}
 	} else {
-		// SQLite mode - check for existing session file
 		dbPath := filepath.Join(m.baseDir, instanceID+".db")
 		if _, err := os.Stat(dbPath); err == nil {
 			sqlitePath := fmt.Sprintf("file:%s?_foreign_keys=on", dbPath)
@@ -208,7 +205,6 @@ func (m *Manager) createSession(ctx context.Context, instanceID string, forceRec
 			return "", fmt.Errorf("instância já conectada, não é necessário QR code")
 		}
 
-		// For SQLite, remove and recreate
 		if m.storageDriver != "postgres" {
 			dbPath := filepath.Join(m.baseDir, instanceID+".db")
 			m.log.Warn("restauração falhou, deletando arquivo SQLite e criando nova sessão",
@@ -227,7 +223,6 @@ func (m *Manager) createSession(ctx context.Context, instanceID string, forceRec
 				return "", fmt.Errorf("whatsmeow: obter device: %w", err)
 			}
 		} else {
-			// For PostgreSQL, get a new device
 			deviceStore = container.NewDevice()
 		}
 	}
@@ -328,7 +323,6 @@ func (m *Manager) monitorQRChannel(instanceID string, qrChan <-chan whatsmeow.QR
 		case "success":
 			m.log.Info("pareamento concluído com sucesso", zap.String("instance_id", instanceID))
 
-			// Mark pairing success time to prevent race condition with GetQR
 			m.mu.Lock()
 			m.pairingSuccess[instanceID] = time.Now()
 			m.mu.Unlock()
@@ -337,25 +331,19 @@ func (m *Manager) monitorQRChannel(instanceID string, qrChan <-chan whatsmeow.QR
 			client, exists := m.clients[instanceID]
 			m.mu.RUnlock()
 
-			// Gerar cycle_id e iniciar worker de sync em background
 			go m.initHistorySyncCycle(instanceID)
 			if exists && client != nil {
 				go func() {
 					for attempt := 1; attempt <= 5; attempt++ {
 						time.Sleep(time.Duration(attempt*2) * time.Second)
 						if !client.IsLoggedIn() {
-							return // Cliente desconectou
+							return
 						}
 						if err := client.SendPresence(context.Background(), types.PresenceAvailable); err != nil {
 							if attempt < 5 {
 								m.log.Debug("aguardando PushName para enviar presence",
 									zap.String("instance_id", instanceID),
 									zap.Int("attempt", attempt),
-								)
-							} else {
-								// Após todas tentativas, apenas logar (não é crítico)
-								m.log.Debug("PushName não sincronizado, presence não enviado",
-									zap.String("instance_id", instanceID),
 								)
 							}
 						} else {
@@ -365,7 +353,6 @@ func (m *Manager) monitorQRChannel(instanceID string, qrChan <-chan whatsmeow.QR
 					}
 				}()
 
-				// Add post-pairing connection verification
 				go func() {
 					time.Sleep(10 * time.Second)
 					m.mu.RLock()
@@ -394,40 +381,10 @@ func (m *Manager) monitorQRChannel(instanceID string, qrChan <-chan whatsmeow.QR
 					}
 				}()
 			}
-			m.mu.Lock()
-			delete(m.currentQRs, instanceID)
-			delete(m.qrContexts, instanceID)
-			m.mu.Unlock()
-			return
-
-		case "timeout", "err-unexpected-state", "err-client-outdated", "err-scanned-without-multidevice":
-			m.log.Warn("canal QR fechado", zap.String("instance_id", instanceID), zap.String("event", evt.Event))
-			m.mu.Lock()
-			delete(m.currentQRs, instanceID)
-			delete(m.qrContexts, instanceID)
-			m.mu.Unlock()
-			return
-
-		case "error":
-			m.log.Error("erro no pareamento", zap.String("instance_id", instanceID), zap.Error(evt.Error))
-			m.mu.Lock()
-			delete(m.currentQRs, instanceID)
-			delete(m.qrContexts, instanceID)
-			m.mu.Unlock()
-			return
-		default:
-			m.log.Debug("evento QR desconhecido", zap.String("instance_id", instanceID), zap.String("event", evt.Event))
 		}
 	}
-
-	m.log.Debug("canal QR foi fechado", zap.String("instance_id", instanceID))
-	m.mu.Lock()
-	delete(m.qrContexts, instanceID)
-	m.mu.Unlock()
 }
 
-// GetQR retorna o QR code atual se disponível.
-// Se a sessão não existir ou não estiver logada, cria uma nova automaticamente.
 func (m *Manager) GetQR(ctx context.Context, instanceID string) (string, error) {
 	m.mu.RLock()
 	client, exists := m.clients[instanceID]
@@ -435,24 +392,19 @@ func (m *Manager) GetQR(ctx context.Context, instanceID string) (string, error) 
 	_, hasQRContext := m.qrContexts[instanceID]
 	m.mu.RUnlock()
 
-	// Se há QR disponível, retornar imediatamente (mesmo que não esteja logado ainda)
 	if hasQR && currentQR != "" {
 		return currentQR, nil
 	}
 
-	// Se existe cliente
 	if exists && client != nil {
-		// Se está logado, não pode gerar QR
 		if client.IsLoggedIn() {
 			return "", fmt.Errorf("instância já conectada, não é possível gerar QR code")
 		}
 
-		// Se não está logado mas há contexto QR ativo, aguardar QR aparecer
 		if hasQRContext {
 			m.log.Debug("sessão sendo criada, aguardando QR code",
 				zap.String("instance_id", instanceID),
 			)
-			// Aguardar um pouco para QR aparecer
 			select {
 			case <-time.After(5 * time.Second):
 				m.mu.RLock()
@@ -467,14 +419,11 @@ func (m *Manager) GetQR(ctx context.Context, instanceID string) (string, error) 
 			}
 		}
 
-		// Cliente existe, não está logado e não há QR nem contexto QR
-		// Verificar se houve pareamento recente (race condition protection)
 		m.mu.RLock()
 		pairingTime, hasPairing := m.pairingSuccess[instanceID]
 		m.mu.RUnlock()
 
 		if hasPairing && time.Since(pairingTime) < 30*time.Second {
-			// Pareamento recente detectado - aguardar conexão ao invés de recriar
 			m.log.Info("pareamento recente detectado, aguardando conexão",
 				zap.String("instance_id", instanceID),
 				zap.Duration("since_pairing", time.Since(pairingTime)),
@@ -482,22 +431,19 @@ func (m *Manager) GetQR(ctx context.Context, instanceID string) (string, error) 
 			return "", fmt.Errorf("pareamento em andamento, aguarde a conexão ser estabelecida")
 		}
 
-		// Isso significa que a sessão falhou - desconectar e recriar
 		m.log.Info("cliente existe mas não está logado e sem QR ativo, desconectando para recriar sessão",
 			zap.String("instance_id", instanceID),
 		)
-		// Desconectar e remover para forçar recriação
 		client.Disconnect()
 		m.mu.Lock()
 		delete(m.clients, instanceID)
 		delete(m.currentQRs, instanceID)
-		delete(m.pairingSuccess, instanceID) // Clean up old pairing mark
+		delete(m.pairingSuccess, instanceID)
 		if cancel, exists := m.qrContexts[instanceID]; exists {
 			cancel()
 			delete(m.qrContexts, instanceID)
 		}
 		m.mu.Unlock()
-		// Deletar arquivo SQLite inválido antes de criar nova sessão (only for SQLite mode)
 		if m.storageDriver != "postgres" {
 			dbPath := filepath.Join(m.baseDir, instanceID+".db")
 			if _, err := os.Stat(dbPath); err == nil {
@@ -507,31 +453,24 @@ func (m *Manager) GetQR(ctx context.Context, instanceID string) (string, error) 
 				_ = os.Remove(dbPath)
 			}
 		}
-		// Agora criar nova sessão
 		return m.CreateSession(ctx, instanceID)
 	}
 
-	// Cliente não existe - verificar se há arquivo SQLite com sessão válida
 	dbPath := filepath.Join(m.baseDir, instanceID+".db")
 	if _, err := os.Stat(dbPath); err == nil {
-		// Arquivo existe - tentar restaurar primeiro
 		client, err := m.restoreSessionIfExists(ctx, instanceID)
 		if err == nil && client != nil && client.IsLoggedIn() {
-			// Restauração bem-sucedida - não precisa de QR
 			return "", fmt.Errorf("instância já conectada, não é necessário QR code")
 		}
-		// Se restauração falhou ou não está logada, deletar arquivo e criar nova sessão
 		m.log.Info("sessão SQLite inválida ou expirada, deletando e criando nova",
 			zap.String("instance_id", instanceID),
 		)
-		_ = os.Remove(dbPath) // Deletar arquivo SQLite
+		_ = os.Remove(dbPath)
 	}
 
-	// Criar nova sessão
 	return m.CreateSession(ctx, instanceID)
 }
 
-// RestoreSession restaura uma sessão a partir de dados criptografados.
 func (m *Manager) RestoreSession(ctx context.Context, instanceID string, encryptedBlob []byte) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -541,7 +480,6 @@ func (m *Manager) RestoreSession(ctx context.Context, instanceID string, encrypt
 		return fmt.Errorf("whatsmeow: descriptografar: %w", err)
 	}
 
-	// Restaurar device store a partir dos dados descriptografados
 	clientLog := &noopLogger{}
 	dbPath := fmt.Sprintf("file:%s?_foreign_keys=on", filepath.Join(m.baseDir, instanceID+".db"))
 	container, err := sqlstore.New(ctx, "sqlite3", dbPath, clientLog)
@@ -549,8 +487,6 @@ func (m *Manager) RestoreSession(ctx context.Context, instanceID string, encrypt
 		return fmt.Errorf("whatsmeow: criar store: %w", err)
 	}
 
-	// Aqui normalmente você restauraria o device store dos dados descriptografados
-	// Por simplicidade, vamos assumir que o arquivo DB já existe
 	deviceStore, err := container.GetFirstDevice(ctx)
 	if err != nil {
 		return fmt.Errorf("whatsmeow: obter device: %w", err)
@@ -567,48 +503,55 @@ func (m *Manager) RestoreSession(ctx context.Context, instanceID string, encrypt
 	return nil
 }
 
-// Disconnect desconecta uma sessão.
-func (m *Manager) Disconnect(instanceID string) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+func (m *Manager) logoutClient(instanceID string, client *whatsmeow.Client) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
 
-	client, exists := m.clients[instanceID]
-	if exists {
-		// Cancelar contexto QR se existir
-		if cancel, exists := m.qrContexts[instanceID]; exists {
-			cancel()
-			delete(m.qrContexts, instanceID)
-		}
-
+	if err := client.Logout(ctx); err != nil {
+		m.log.Warn("logout falhou, forçando disconnect",
+			zap.String("instance_id", instanceID),
+			zap.Error(err),
+		)
 		client.Disconnect()
-		delete(m.clients, instanceID)
-		delete(m.currentQRs, instanceID)
+		return
 	}
 
-	// Não deletar o arquivo SQLite aqui - apenas desconectar o cliente em memória
-	// O arquivo SQLite será mantido para permitir reconexão futura
-	return nil
+	m.log.Info("logout concluído",
+	zap.String("instance_id", instanceID),
+	)
 }
 
-// DeleteSession remove completamente a sessão, incluindo o arquivo SQLite
+// Disconnect encerra a sessão atual removendo também o store associado.
+func (m *Manager) Disconnect(instanceID string) error {
+	return m.DeleteSession(instanceID)
+}
+
 func (m *Manager) DeleteSession(instanceID string) error {
+	var client *whatsmeow.Client
+
 	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	// Desconectar cliente se existir
-	if client, exists := m.clients[instanceID]; exists {
-		// Cancelar contexto QR se existir
-		if cancel, exists := m.qrContexts[instanceID]; exists {
-			cancel()
-			delete(m.qrContexts, instanceID)
-		}
-
-		client.Disconnect()
+	if cancel, exists := m.qrContexts[instanceID]; exists {
+		cancel()
+		delete(m.qrContexts, instanceID)
+	}
+	if c, exists := m.clients[instanceID]; exists {
+		client = c
 		delete(m.clients, instanceID)
-		delete(m.currentQRs, instanceID)
+	}
+	delete(m.currentQRs, instanceID)
+	m.mu.Unlock()
+
+	if client != nil {
+		m.logoutClient(instanceID, client)
 	}
 
-	// Deletar arquivo SQLite
+	if m.storageDriver == "postgres" && m.pgConnString != "" {
+		if err := m.deletePostgresSession(instanceID); err != nil {
+			return err
+		}
+		return nil
+	}
+
 	dbPath := filepath.Join(m.baseDir, instanceID+".db")
 	if _, err := os.Stat(dbPath); err == nil {
 		if err := os.Remove(dbPath); err != nil {
@@ -617,7 +560,6 @@ func (m *Manager) DeleteSession(instanceID string) error {
 				zap.String("db_path", dbPath),
 				zap.Error(err),
 			)
-			// Não retornar erro - continuar mesmo se não conseguir deletar
 		} else {
 			m.log.Info("arquivo SQLite deletado",
 				zap.String("instance_id", instanceID),
@@ -629,8 +571,41 @@ func (m *Manager) DeleteSession(instanceID string) error {
 	return nil
 }
 
-// GetClient retorna o cliente WhatsMeow para uma instância.
-// Se o cliente não estiver no map, tenta restaurar a sessão do SQLite.
+func (m *Manager) deletePostgresSession(instanceID string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	container, err := sqlstore.New(ctx, "postgres", m.pgConnString, &noopLogger{})
+	if err != nil {
+		return fmt.Errorf("whatsmeow: criar container PostgreSQL: %w", err)
+	}
+
+	jid, err := types.ParseJID(instanceID + "@s.whatsapp.net")
+	if err != nil {
+		return fmt.Errorf("whatsmeow: parse device JID: %w", err)
+	}
+
+	store, err := container.GetDevice(ctx, jid)
+	if err != nil {
+		return fmt.Errorf("whatsmeow: obter device PostgreSQL: %w", err)
+	}
+	if store == nil {
+		m.log.Debug("sessão PostgreSQL já removida",
+			zap.String("instance_id", instanceID),
+		)
+		return nil
+	}
+
+	if err := store.Delete(ctx); err != nil {
+		return fmt.Errorf("whatsmeow: deletar device PostgreSQL: %w", err)
+	}
+
+	m.log.Info("sessão removida do PostgreSQL",
+		zap.String("instance_id", instanceID),
+	)
+	return nil
+}
+
 func (m *Manager) GetClient(instanceID string) (*whatsmeow.Client, error) {
 	m.log.Debug("GetClient chamado",
 		zap.String("instance_id", instanceID),

@@ -201,7 +201,7 @@
     <p>Configure como suas instâncias aparecem na lista de dispositivos conectados.</p>
   </div>
 
-  <form class="config-form" method="post" action="/dashboard/settings">
+  <form class="config-form" method="post" action="/dashboard/settings" id="settingsForm">
     <div class="form-grid">
       <div class="form-field">
         <label for="platform_type">
@@ -259,7 +259,7 @@
       <p>Para aplicar as mudanças, reconecte as instâncias (desconecte e gere novo QR code). Afeta apenas novos pareamentos.</p>
     </div>
 
-    <button type="submit" class="submit-button">
+    <button type="submit" class="submit-button" id="settingsSubmit">
       <svg class="btn-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
         <path d="M6 4h10l4 4v10a2 2 0 0 1 -2 2h-12a2 2 0 0 1 -2 -2v-12a2 2 0 0 1 2 -2" />
         <path d="M12 14m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0" />
@@ -269,4 +269,13 @@
     </button>
   </form>
 </div>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  const settingsForm = document.getElementById('settingsForm');
+  const settingsSubmit = document.getElementById('settingsSubmit');
+  if (settingsForm && typeof preventDoubleSubmit === 'function') {
+    preventDoubleSubmit(settingsForm, { button: settingsSubmit, loadingText: 'Salvando...' });
+  }
+});
+</script>
 {{end}}

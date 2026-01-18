@@ -94,6 +94,7 @@ type WebhookConfig struct {
 
 type DashboardConfig struct {
 	Enabled bool `env:"DASHBOARD_ENABLED" envDefault:"true"`
+	Timezone string `env:"DASHBOARD_TIMEZONE" envDefault:""`
 }
 
 // Load carrega as configurações da aplicação.
