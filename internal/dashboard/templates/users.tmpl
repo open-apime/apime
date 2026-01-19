@@ -1142,7 +1142,7 @@ document.addEventListener('DOMContentLoaded', function() {
       );
       if (confirmed) {
         if (typeof setFormSubmittingState === 'function') {
-          setFormSubmittingState(this, { loadingText: 'Removendo...' });
+          setFormSubmittingState(this, { loadingStyle: 'icon' });
         }
         this.submit();
       }

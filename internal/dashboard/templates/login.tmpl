@@ -4,16 +4,7 @@
     <div class="card" style="padding:1.5rem 1.5rem 1.25rem;">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;">
         <div style="display:flex;align-items:center;gap:0.75rem;">
-          <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-            <g stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M7.908 9.248l1.7 5.665m7.476 7.478l5.666 1.7"/>
-              <path d="M15.577 16.423l7.679 -7.679"/>
-              <circle cx="7.333" cy="7.333" r="2" fill="#2563eb"/>
-              <circle cx="24.667" cy="7.333" r="2" fill="#2563eb"/>
-              <circle cx="24.667" cy="24.667" r="2" fill="#2563eb"/>
-              <circle cx="11.333" cy="20.667" r="6" fill="#2563eb"/>
-            </g>
-          </svg>
+          <img src="/static/favicon.png" alt="ApiMe" width="32" height="32" style="display:block;"  aria-hidden="true">
           <h1 style="margin:0;letter-spacing:-0.02em;">ApiMe</h1>
         </div>
         <button type="button" id="themeToggleLogin" aria-label="Alternar tema" title="Alternar tema" style="background:none;border:none;cursor:pointer;padding:8px;color:currentColor;">
@@ -89,12 +80,7 @@
             <path d="M3 12h13l-3 -3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
             <path d="M13 15l3 -3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
-          <svg id="loginSpinner" width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" style="display:none;">
-            <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
-            <path d="M12 3a9 9 0 1 0 9 9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-              <animateTransform attributeName="transform" attributeType="XML" type="rotate" from="0 12 12" to="360 12 12" dur="1s" repeatCount="indefinite"/>
-            </path>
-          </svg>
+          <span id="loginSpinner" class="loading-spinner" aria-hidden="true" style="display:none;"></span>
           <span id="loginText">Acessar</span>
         </button>
       </form>
@@ -173,7 +159,7 @@
 
           loginBtn.disabled = true;
           loginIcon.style.display = 'none';
-          loginSpinner.style.display = 'block';
+          loginSpinner.style.display = 'inline-block';
           loginText.textContent = 'Acessando...';
         });
       }

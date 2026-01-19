@@ -285,6 +285,18 @@
         transform: rotate(360deg);
       }
     }
+    .action-btn.is-loading svg {
+      display: none !important;
+    }
+    .action-btn.is-loading::after {
+      content: '';
+      width: 16px;
+      height: 16px;
+      border-radius: 999px;
+      border: 2px solid rgba(148, 163, 184, 0.35);
+      border-top-color: currentColor;
+      animation: dashboardSpin 0.8s linear infinite;
+    }
     .toast-container {
       position: fixed;
       top: 16px;
