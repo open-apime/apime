@@ -880,7 +880,9 @@
       if (params.has('error')) createToast('error', params.get('error'));
 
 
-      window.customConfirm = function(message, title = 'Confirmar ação', options = {}) {
+      window.customConfirm = function(message, title, options) {
+        title = title || 'Confirmar ação';
+        options = options || {};
         return new Promise(function(resolve) {
           var modal = document.getElementById('customConfirmModal');
           var titleEl = document.getElementById('customConfirmTitle');
@@ -923,7 +925,9 @@
         });
       };
 
-      window.customAlert = function(message, title = 'Aviso', options = {}) {
+      window.customAlert = function(message, title, options) {
+        title = title || 'Aviso';
+        options = options || {};
         return new Promise(function(resolve) {
           var modal = document.getElementById('customConfirmModal');
           var titleEl = document.getElementById('customConfirmTitle');

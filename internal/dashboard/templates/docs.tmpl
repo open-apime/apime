@@ -1223,38 +1223,36 @@ curl -X POST {{.BaseURL}}/api/users \
 </div>
 
 <script>
-
-  window.copyToClipboard = async function(text, btn) {
-    try {
+  (function() {
+    window.copyToClipboard = function(text, btn) {
       if (!text && btn) {
-        const container = btn.closest('.code-container');
-        const codeBlock = container.querySelector('.code-body');
+        var container = btn.closest('.code-container');
+        var codeBlock = container.querySelector('.code-body');
         if (codeBlock) {
           text = codeBlock.textContent;
         }
       }
 
-      await navigator.clipboard.writeText(text);
-      const originalText = btn.textContent;
-      btn.textContent = 'Copiado!';
-      btn.style.color = '#10b981';
-      setTimeout(() => {
-        btn.textContent = originalText;
-        btn.style.color = '';
-      }, 2000);
-    } catch (err) {
-      console.error('Erro ao copiar:', err);
-    }
-  };
+      navigator.clipboard.writeText(text).then(function() {
+        var originalText = btn.textContent;
+        btn.textContent = 'Copiado!';
+        btn.style.color = '#10b981';
+        setTimeout(function() {
+          btn.textContent = originalText;
+          btn.style.color = '';
+        }, 2000);
+      }).catch(function(err) {
+        console.error('Erro ao copiar:', err);
+      });
+    };
 
     window.toggleSidebarCategory = function(header) {
-      const group = header.parentElement;
-      const wasExpanded = group.classList.contains('expanded');
+      var group = header.parentElement;
+      var wasExpanded = group.classList.contains('expanded');
 
-      document.querySelectorAll('.nav-group.expanded').forEach(el => {
+      document.querySelectorAll('.nav-group.expanded').forEach(function(el) {
         el.classList.remove('expanded');
       });
-
 
       if (!wasExpanded) {
         group.classList.add('expanded');
@@ -1262,57 +1260,55 @@ curl -X POST {{.BaseURL}}/api/users \
     };
 
     window.toggleExpand = function(btn) {
-      const container = btn.closest('.code-container');
-      const codeBody = container.querySelector('.code-body');
+      var container = btn.closest('.code-container');
+      var codeBody = container.querySelector('.code-body');
       
       if (codeBody.classList.contains('expanded')) {
         codeBody.classList.remove('expanded');
         container.classList.remove('expanded');
-
         btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>';
         btn.title = "Expandir";
       } else {
         codeBody.classList.add('expanded');
         container.classList.add('expanded');
-
         btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line></svg>';
         btn.title = "Recolher";
       }
     };
   
-    document.addEventListener('DOMContentLoaded', () => {
-      const hash = window.location.hash;
+    function initDocs() {
+      // Restore active state from hash
+      var hash = window.location.hash;
       if (hash) {
-        const targetLink = document.querySelector(`.nav-item[href="${hash}"]`);
+        var targetLink = document.querySelector('.nav-item[href="' + hash + '"]');
         if (targetLink) {
-           const group = targetLink.closest('.nav-group');
-           if (group) {
-             group.classList.add('expanded');
-           }
+          var group = targetLink.closest('.nav-group');
+          if (group) group.classList.add('expanded');
         }
       }
 
-      const sections = document.querySelectorAll('.endpoint-section');
-      const navItems = document.querySelectorAll('.nav-item');
+      var sections = document.querySelectorAll('.endpoint-section');
+      var navItems = document.querySelectorAll('.nav-item');
   
       function updateNav() {
-        let current = '';
-        sections.forEach(section => {
-          const sectionTop = section.offsetTop;
-
-          if (window.pageYOffset >= sectionTop - 80) {
+        var current = '';
+        var scrollPos = window.pageYOffset || document.documentElement.scrollTop;
+        
+        sections.forEach(function(section) {
+          if (scrollPos >= section.offsetTop - 100) {
             current = section.getAttribute('id');
           }
         });
   
-        navItems.forEach(item => {
+        navItems.forEach(function(item) {
           item.classList.remove('active');
           if (item.getAttribute('href').substring(1) === current) {
             item.classList.add('active');
-            
-            const group = item.closest('.nav-group');
+            var group = item.closest('.nav-group');
             if (group && !group.classList.contains('expanded')) {
-              document.querySelectorAll('.nav-group.expanded').forEach(el => el.classList.remove('expanded'));
+              document.querySelectorAll('.nav-group.expanded').forEach(function(el) {
+                el.classList.remove('expanded');
+              });
               group.classList.add('expanded');
             }
           }
@@ -1322,26 +1318,29 @@ curl -X POST {{.BaseURL}}/api/users \
       window.addEventListener('scroll', updateNav);
       updateNav();
   
-      document.querySelectorAll('.code-header').forEach(header => {
+      // Add expand buttons to code containers
+      document.querySelectorAll('.code-header').forEach(function(header) {
         if (header.querySelector('.btn-expand-code')) return;
   
-        const container = header.closest('.code-container');
-        if (!container) return;
-
-        const btn = document.createElement('button');
+        var btn = document.createElement('button');
         btn.className = 'btn-expand-code';
-      btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>';
-      btn.title = 'Expandir';
-      btn.type = 'button';
-        
-        btn.onclick = (e) => {
+        btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>';
+        btn.title = 'Expandir';
+        btn.type = 'button';
+        btn.onclick = function(e) {
           e.preventDefault();
           e.stopPropagation();
           window.toggleExpand(btn);
         };
-        
         header.appendChild(btn);
       });
-    });
+    }
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initDocs);
+    } else {
+      initDocs();
+    }
+  })();
 </script>
 {{end}}
