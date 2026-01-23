@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"go.mau.fi/whatsmeow"
+	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 	"go.uber.org/zap"
 
@@ -51,6 +52,12 @@ func (h *EventHandler) Handle(ctx context.Context, instanceID string, instanceJI
 
 	if receipt, ok := evt.(*events.Receipt); ok {
 		status := string(receipt.Type)
+		if receipt.Type == types.ReceiptTypeRetry {
+			h.log.Warn("[dispatcher] RECEBIDO RETRY RECEIPT - Destinatário não conseguiu decriptar a mensagem",
+				zap.Strings("msg_ids", receipt.MessageIDs),
+				zap.String("chat", receipt.Chat.String()))
+		}
+
 		for _, msgID := range receipt.MessageIDs {
 			if err := h.messageRepo.UpdateStatusByWhatsAppID(ctx, msgID, status); err != nil {
 				h.log.Warn("[dispatcher] erro ao atualizar status da mensagem via receipt",
@@ -58,7 +65,7 @@ func (h *EventHandler) Handle(ctx context.Context, instanceID string, instanceJI
 					zap.String("status", status),
 					zap.Error(err))
 			} else {
-				h.log.Debug("[dispatcher] status da mensagem atualizado via receipt",
+				h.log.Info("[dispatcher] status da mensagem atualizado via receipt",
 					zap.String("msg_id", msgID),
 					zap.String("status", status))
 			}

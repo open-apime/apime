@@ -24,6 +24,7 @@ import (
 	"github.com/open-apime/apime/internal/service/message"
 	"github.com/open-apime/apime/internal/service/user"
 	"github.com/open-apime/apime/internal/session/whatsmeow"
+	whatsmeow_session "github.com/open-apime/apime/internal/session/whatsmeow"
 	"github.com/open-apime/apime/internal/storage"
 	"github.com/open-apime/apime/internal/storage/media"
 	"github.com/open-apime/apime/internal/storage/model"
@@ -107,6 +108,10 @@ func main() {
 	eventHandler := webhook.NewEventHandler(repos.WebhookQueue, logr, mediaStorage, repos.Message, cfg.App.BaseURL, instanceWebhookChecker)
 	sessionManager.SetEventHandler(eventHandler)
 	logr.Info("event handler configurado")
+
+	stuckDetector := whatsmeow_session.NewMessageStuckDetector(repos.Message, sessionManager, logr, 2*time.Minute)
+	stuckDetector.Start(context.Background(), 1*time.Minute)
+	logr.Info("detector de mensagens travadas (Stuck) iniciado")
 
 	webhookDelivery := delivery.NewDelivery(logr, 3)
 	webhookPool := webhook.NewPool(repos.WebhookQueue, repos.Instance, webhookDelivery, logr, cfg.Webhook.Workers)

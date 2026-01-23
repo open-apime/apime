@@ -386,13 +386,11 @@ func (s *Service) Send(ctx context.Context, input SendInput) (model.Message, err
 		Status:     "sending",
 	}
 
-	
 	msg, err := s.repo.Create(ctx, message)
 	if err != nil {
 		return model.Message{}, fmt.Errorf("erro ao salvar mensagem: %w", err)
 	}
 
-	
 	var resp whatsmeow.SendResponse
 	maxRetries := 3
 	for attempt := 0; attempt <= maxRetries; attempt++ {
@@ -404,11 +402,9 @@ func (s *Service) Send(ctx context.Context, input SendInput) (model.Message, err
 				zap.String("to", toJID.String()))
 			time.Sleep(backoff)
 
-			
 			_ = client.SendPresence(ctx, types.PresenceAvailable)
 			_ = client.SendChatPresence(ctx, toJID, types.ChatPresenceComposing, types.ChatPresenceMediaText)
 
-			
 			_, _ = client.GetUserDevices(ctx, []types.JID{toJID})
 		}
 
@@ -422,7 +418,6 @@ func (s *Service) Send(ctx context.Context, input SendInput) (model.Message, err
 			zap.Error(err),
 			zap.String("to", toJID.String()))
 
-		
 		if strings.Contains(err.Error(), "not logged in") {
 			break
 		}
@@ -434,12 +429,13 @@ func (s *Service) Send(ctx context.Context, input SendInput) (model.Message, err
 		return msg, fmt.Errorf("erro ao enviar mensagem após %d tentativas: %w", maxRetries, err)
 	}
 
-	
 	msg.Status = "sent"
 	msg.WhatsAppID = resp.ID
 	if err := s.repo.Update(ctx, msg); err != nil {
 		s.log.Warn("erro ao atualizar status enviado no banco", zap.Error(err))
 	}
+
+	_ = client.SendChatPresence(ctx, toJID, types.ChatPresencePaused, types.ChatPresenceMediaText)
 
 	return msg, nil
 }

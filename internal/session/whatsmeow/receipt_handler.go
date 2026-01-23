@@ -37,48 +37,21 @@ func (h *ReceiptHandler) HandleReceipt(ctx context.Context, instanceID string, r
 		newStatus = "read"
 	case types.ReceiptTypePlayed:
 		newStatus = "played"
+	case types.ReceiptTypeRetry:
+		newStatus = "retry"
 	default:
 		return
 	}
 
 	for _, msgID := range receipt.MessageIDs {
-		messages, err := h.messageRepo.ListByInstance(ctx, instanceID)
-		if err != nil {
-			h.log.Error("erro ao buscar mensagens para atualizar receipt",
-				zap.String("instance_id", instanceID),
-				zap.String("message_id", msgID),
+		if err := h.messageRepo.UpdateStatusByWhatsAppID(ctx, msgID, newStatus); err != nil {
+			h.log.Debug("falha ao atualizar status via receipt",
+				zap.String("msg_id", msgID),
 				zap.Error(err))
-			continue
-		}
-
-		var found bool
-		for _, msg := range messages {
-			if msg.ID == msgID {
-				found = true
-				if shouldUpdateStatus(msg.Status, newStatus) {
-					msg.Status = newStatus
-					if err := h.messageRepo.Update(ctx, msg); err != nil {
-						h.log.Error("erro ao atualizar status da mensagem",
-							zap.String("instance_id", instanceID),
-							zap.String("message_id", msgID),
-							zap.String("new_status", newStatus),
-							zap.Error(err))
-					} else {
-						h.log.Info("status da mensagem atualizado via receipt",
-							zap.String("instance_id", instanceID),
-							zap.String("message_id", msgID),
-							zap.String("status", newStatus),
-							zap.String("recipient", receipt.Chat.String()))
-					}
-				}
-				break
-			}
-		}
-
-		if !found {
-			h.log.Debug("mensagem não encontrada no banco para receipt",
-				zap.String("instance_id", instanceID),
-				zap.String("message_id", msgID))
+		} else {
+			h.log.Info("status da mensagem atualizado via receipt",
+				zap.String("msg_id", msgID),
+				zap.String("status", newStatus))
 		}
 	}
 }
@@ -88,6 +61,7 @@ func shouldUpdateStatus(currentStatus, newStatus string) bool {
 		"pending":   0,
 		"queued":    1,
 		"sent":      2,
+		"retry":     2,
 		"delivered": 3,
 		"read":      4,
 		"played":    4,
@@ -178,14 +152,23 @@ func (d *MessageStuckDetector) checkStuckMessages(ctx context.Context) {
 		}
 
 		for _, msg := range messages {
-			if msg.Status == "sent" && time.Since(msg.CreatedAt) > d.stuckTimeout {
+			isStuck := (msg.Status == "sent" || msg.Status == "retry") && time.Since(msg.CreatedAt) > d.stuckTimeout
+
+			isRetry := msg.Status == "retry"
+
+			if isStuck || isRetry {
 				resetKey := instanceID + ":" + msg.To
 				d.attemptsMu.RLock()
 				lastAttempt, attempted := d.resetAttempts[resetKey]
 				d.attemptsMu.RUnlock()
 
-				if attempted && time.Since(lastAttempt) < 1*time.Hour {
-					if msg.Status != "failed_stuck" {
+				retryDebounce := 1 * time.Hour
+				if isRetry {
+					retryDebounce = 5 * time.Minute
+				}
+
+				if attempted && time.Since(lastAttempt) < retryDebounce {
+					if msg.Status != "failed_stuck" && !isRetry {
 						msg.Status = "failed_stuck"
 						if err := d.messageRepo.Update(ctx, msg); err != nil {
 							d.log.Error("erro ao atualizar status de mensagem stuck",
