@@ -65,3 +65,8 @@ type HistorySyncRepository interface {
 	UpdateStatus(ctx context.Context, id string, status model.HistorySyncPayloadStatus, processedAt *time.Time) error
 	DeleteByInstance(ctx context.Context, instanceID string) error
 }
+
+type ContactRepository interface {
+	Upsert(ctx context.Context, contact model.Contact) error
+	GetByPhone(ctx context.Context, phone string) (model.Contact, error)
+}

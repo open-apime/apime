@@ -75,6 +75,7 @@ type Manager struct {
 	syncWorkers        map[string]context.CancelFunc
 	disconnectDebounce map[string]*time.Timer
 	expectedDisconnect map[string]bool
+	connectedAt        map[string]time.Time
 	messageRepo        storage.MessageRepository
 }
 
@@ -106,6 +107,7 @@ func NewManager(log *zap.Logger, encKey, storageDriver, baseDir, pgConnString st
 		syncWorkers:        make(map[string]context.CancelFunc),
 		disconnectDebounce: make(map[string]*time.Timer),
 		expectedDisconnect: make(map[string]bool),
+		connectedAt:        make(map[string]time.Time),
 		messageRepo:        messageRepo,
 	}
 }
@@ -1322,6 +1324,7 @@ func (m *Manager) handleEvent(instanceID string, evt any) {
 			m.log.Info("reconexão silenciosa detectada (instabilidade de rede recuperada)", zap.String("instance_id", instanceID))
 		}
 		m.expectedDisconnect[instanceID] = false
+		m.connectedAt[instanceID] = time.Now()
 		m.mu.Unlock()
 
 		if handler != nil {
@@ -1388,6 +1391,7 @@ func (m *Manager) handleEvent(instanceID string, evt any) {
 		}
 	case *events.Disconnected:
 		m.mu.Lock()
+		delete(m.connectedAt, instanceID)
 		if m.expectedDisconnect[instanceID] {
 			m.log.Info("desconexão intencional processada imediatamente", zap.String("instance_id", instanceID))
 			m.expectedDisconnect[instanceID] = false
@@ -1740,4 +1744,9 @@ func (m *Manager) getMessageForRetryCallback(instanceID string) func(types.JID, 
 
 		return nil
 	}
+}
+func (m *Manager) GetConnectedAt(instanceID string) time.Time {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.connectedAt[instanceID]
 }

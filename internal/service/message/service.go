@@ -19,7 +19,17 @@ import (
 
 	"github.com/open-apime/apime/internal/storage"
 	"github.com/open-apime/apime/internal/storage/model"
+	"sync"
 )
+
+var (
+	jidCache sync.Map
+)
+
+type jidCacheEntry struct {
+	jid       types.JID
+	expiresAt time.Time
+}
 
 var (
 	ErrInvalidPayload       = errors.New("payload inválido")
@@ -32,6 +42,7 @@ type Service struct {
 	repo         storage.MessageRepository
 	sessionMgr   SessionManager
 	instanceRepo storage.InstanceRepository
+	contactRepo  storage.ContactRepository
 	log          *zap.Logger
 }
 
@@ -49,11 +60,12 @@ func NewService(repo storage.MessageRepository, log *zap.Logger) *Service {
 	}
 }
 
-func NewServiceWithSession(repo storage.MessageRepository, sessionMgr SessionManager, instanceRepo storage.InstanceRepository, log *zap.Logger) *Service {
+func NewServiceWithSession(repo storage.MessageRepository, sessionMgr SessionManager, instanceRepo storage.InstanceRepository, contactRepo storage.ContactRepository, log *zap.Logger) *Service {
 	return &Service{
 		repo:         repo,
 		sessionMgr:   sessionMgr,
 		instanceRepo: instanceRepo,
+		contactRepo:  contactRepo,
 		log:          log,
 	}
 }
@@ -472,8 +484,28 @@ func (s *Service) resolveJID(ctx context.Context, client *whatsmeow.Client, phon
 		}, phone)
 	}
 
-	if strings.Contains(phone, "@s.whatsapp.net") {
+	if strings.HasSuffix(phone, "@s.whatsapp.net") {
 		phone = strings.TrimSuffix(phone, "@s.whatsapp.net")
+	}
+
+	if val, ok := jidCache.Load(phone); ok {
+		entry := val.(jidCacheEntry)
+		if time.Now().Before(entry.expiresAt) {
+			s.log.Debug("JID resolvido via cache em memória", zap.String("phone", phone), zap.String("jid", entry.jid.String()))
+			return entry.jid, nil
+		}
+		jidCache.Delete(phone)
+	}
+
+	if s.contactRepo != nil {
+		if contact, err := s.contactRepo.GetByPhone(ctx, phone); err == nil {
+			jid, jerr := types.ParseJID(contact.JID)
+			if jerr == nil {
+				s.log.Debug("JID resolvido via banco de dados", zap.String("phone", phone), zap.String("jid", jid.String()))
+				jidCache.Store(phone, jidCacheEntry{jid: jid, expiresAt: time.Now().Add(24 * time.Hour)})
+				return jid, nil
+			}
+		}
 	}
 
 	if !strings.HasPrefix(phone, "55") {
@@ -496,11 +528,26 @@ func (s *Service) resolveJID(ctx context.Context, client *whatsmeow.Client, phon
 		return types.ParseJID(phone + "@s.whatsapp.net")
 	}
 
+	resolvedJID := types.EmptyJID
 	for _, item := range resp {
 		if item.JID.User != "" {
-			return item.JID, nil
+			resolvedJID = item.JID
+			break
 		}
 	}
 
-	return types.ParseJID(phone + "@s.whatsapp.net")
+	if resolvedJID.IsEmpty() {
+		jid, _ := types.ParseJID(phone + "@s.whatsapp.net")
+		resolvedJID = jid
+	}
+
+	jidCache.Store(phone, jidCacheEntry{jid: resolvedJID, expiresAt: time.Now().Add(24 * time.Hour)})
+	if s.contactRepo != nil {
+		_ = s.contactRepo.Upsert(ctx, model.Contact{
+			Phone: phone,
+			JID:   resolvedJID.String(),
+		})
+	}
+
+	return resolvedJID, nil
 }

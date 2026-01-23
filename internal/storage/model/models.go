@@ -116,3 +116,10 @@ type WhatsappHistorySync struct {
 	CreatedAt   time.Time                `json:"createdAt"`
 	ProcessedAt *time.Time               `json:"processedAt"`
 }
+
+type Contact struct {
+	Phone     string    `json:"phone"`
+	JID       string    `json:"jid"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
+}

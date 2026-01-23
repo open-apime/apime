@@ -23,6 +23,7 @@ type Repositories struct {
 	APIToken     APITokenRepository
 	DeviceConfig DeviceConfigRepository
 	HistorySync  HistorySyncRepository
+	Contact      ContactRepository
 	RedisClient  *storage_redis.Client
 	WebhookQueue queue.Queue
 	RateLimiter  ratelimiter.Limiter
@@ -80,6 +81,7 @@ func NewRepositories(cfg config.Config, log *zap.Logger) (*Repositories, error) 
 			APIToken:     sqlite.NewAPITokenRepository(db),
 			DeviceConfig: sqlite.NewDeviceConfigRepository(db),
 			HistorySync:  sqlite.NewHistorySyncRepository(db),
+			Contact:      sqlite.NewContactRepository(db),
 			RedisClient:  storeRedis,
 			WebhookQueue: webhookQueue,
 			RateLimiter:  rateLimiter,
@@ -102,6 +104,7 @@ func NewRepositories(cfg config.Config, log *zap.Logger) (*Repositories, error) 
 			APIToken:     postgres.NewAPITokenRepository(db),
 			DeviceConfig: postgres.NewDeviceConfigRepository(db),
 			HistorySync:  postgres.NewHistorySyncRepository(db),
+			Contact:      postgres.NewContactRepository(db),
 			RedisClient:  storeRedis,
 			WebhookQueue: webhookQueue,
 			RateLimiter:  rateLimiter,

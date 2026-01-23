@@ -139,7 +139,7 @@ func main() {
 	}
 
 	logr.Debug("inicializando serviços")
-	messageService := message.NewServiceWithSession(repos.Message, sessionManager, repos.Instance, logr)
+	messageService := message.NewServiceWithSession(repos.Message, sessionManager, repos.Instance, repos.Contact, logr)
 	apiTokenService := api_token.NewService(repos.APIToken)
 	userService := user.NewService(repos.User, apiTokenService, instanceService)
 	authService := auth.NewService(cfg.JWT.Secret, cfg.JWT.ExpHours, repos.User)

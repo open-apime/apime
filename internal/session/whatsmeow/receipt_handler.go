@@ -143,6 +143,11 @@ func (d *MessageStuckDetector) checkStuckMessages(ctx context.Context) {
 	instances := d.sessionMgr.ListInstances()
 
 	for _, instanceID := range instances {
+		connectedAt := d.sessionMgr.GetConnectedAt(instanceID)
+		if !connectedAt.IsZero() && time.Since(connectedAt) < 5*time.Minute {
+			continue
+		}
+
 		messages, err := d.messageRepo.ListByInstance(ctx, instanceID)
 		if err != nil {
 			d.log.Error("erro ao buscar mensagens para verificar stuck",
