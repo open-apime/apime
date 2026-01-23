@@ -134,6 +134,43 @@ func (r *messageRepo) UpdateStatusByWhatsAppID(ctx context.Context, whatsappID s
 	return err
 }
 
+func (r *messageRepo) GetByWhatsAppID(ctx context.Context, whatsappID string) (model.Message, error) {
+	query := `
+		SELECT id, instance_id, whatsapp_id, recipient, type, payload, status, delivered_at, created_at
+		FROM message_queue
+		WHERE whatsapp_id = $1
+		LIMIT 1
+	`
+
+	var msg model.Message
+	var payloadBytes []byte
+	var wID *string
+	err := r.db.Pool.QueryRow(ctx, query, whatsappID).Scan(
+		&msg.ID, &msg.InstanceID, &wID, &msg.To, &msg.Type, &payloadBytes, &msg.Status, &msg.DeliveredAt, &msg.CreatedAt,
+	)
+
+	if err != nil {
+		return model.Message{}, err
+	}
+
+	if wID != nil {
+		msg.WhatsAppID = *wID
+	}
+
+	var payloadMap map[string]interface{}
+	if err := json.Unmarshal(payloadBytes, &payloadMap); err == nil {
+		if text, ok := payloadMap["text"].(string); ok {
+			msg.Payload = text
+		} else {
+			msg.Payload = string(payloadBytes)
+		}
+	} else {
+		msg.Payload = string(payloadBytes)
+	}
+
+	return msg, nil
+}
+
 func (r *messageRepo) DeleteByInstanceID(ctx context.Context, instanceID string) error {
 	query := `DELETE FROM message_queue WHERE instance_id = $1`
 	_, err := r.db.Pool.Exec(ctx, query, instanceID)

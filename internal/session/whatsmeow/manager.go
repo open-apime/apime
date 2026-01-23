@@ -12,12 +12,14 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 	"go.mau.fi/whatsmeow"
 	waCompanionReg "go.mau.fi/whatsmeow/proto/waCompanionReg"
+	"go.mau.fi/whatsmeow/proto/waE2E"
 	"go.mau.fi/whatsmeow/store"
 	"go.mau.fi/whatsmeow/store/sqlstore"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 	waLog "go.mau.fi/whatsmeow/util/log"
 	"go.uber.org/zap"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/open-apime/apime/internal/pkg/crypto"
 	"github.com/open-apime/apime/internal/storage"
@@ -73,9 +75,10 @@ type Manager struct {
 	syncWorkers        map[string]context.CancelFunc
 	disconnectDebounce map[string]*time.Timer
 	expectedDisconnect map[string]bool
+	messageRepo        storage.MessageRepository
 }
 
-func NewManager(log *zap.Logger, encKey, storageDriver, baseDir, pgConnString string, deviceConfigRepo storage.DeviceConfigRepository, instanceRepo storage.InstanceRepository, historySyncRepo storage.HistorySyncRepository) *Manager {
+func NewManager(log *zap.Logger, encKey, storageDriver, baseDir, pgConnString string, deviceConfigRepo storage.DeviceConfigRepository, instanceRepo storage.InstanceRepository, historySyncRepo storage.HistorySyncRepository, messageRepo storage.MessageRepository) *Manager {
 	if storageDriver != "postgres" {
 		if baseDir == "" {
 			baseDir = "/app/data/sessions"
@@ -103,6 +106,7 @@ func NewManager(log *zap.Logger, encKey, storageDriver, baseDir, pgConnString st
 		syncWorkers:        make(map[string]context.CancelFunc),
 		disconnectDebounce: make(map[string]*time.Timer),
 		expectedDisconnect: make(map[string]bool),
+		messageRepo:        messageRepo,
 	}
 }
 
@@ -287,6 +291,9 @@ func (m *Manager) createSession(ctx context.Context, instanceID string, forceRec
 	client := whatsmeow.NewClient(deviceStore, clientLog)
 	client.EnableAutoReconnect = true
 	client.ManualHistorySyncDownload = true
+
+	// Configurar callback para recuperar mensagens para retry via banco de dados
+	client.GetMessageForRetry = m.getMessageForRetryCallback(instanceID)
 
 	client.AddEventHandler(func(evt any) {
 		m.handleEvent(instanceID, evt)
@@ -896,6 +903,9 @@ func (m *Manager) restoreSessionIfExists(ctx context.Context, instanceID string)
 	}
 
 	client := whatsmeow.NewClient(deviceStore, clientLog)
+
+	// Configurar callback para recuperar mensagens para retry via banco de dados
+	client.GetMessageForRetry = m.getMessageForRetryCallback(instanceID)
 
 	client.AddEventHandler(func(evt any) {
 		m.handleEvent(instanceID, evt)
@@ -1688,4 +1698,46 @@ func (m *Manager) ListInstances() []string {
 		ids = append(ids, id)
 	}
 	return ids
+}
+
+func (m *Manager) getMessageForRetryCallback(instanceID string) func(types.JID, types.JID, string) *waE2E.Message {
+	return func(chat, sender types.JID, id string) *waE2E.Message {
+		m.log.Debug("WhatsMeow solicitou mensagem para retry",
+			zap.String("instance_id", instanceID),
+			zap.String("msg_id", id),
+			zap.String("chat", chat.String()))
+
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		msg, err := m.messageRepo.GetByWhatsAppID(ctx, id)
+		if err != nil {
+			m.log.Debug("mensagem não encontrada para retry no banco",
+				zap.String("instance_id", instanceID),
+				zap.String("msg_id", id),
+				zap.Error(err))
+			return nil
+		}
+
+		waMsg := &waE2E.Message{}
+		switch msg.Type {
+		case "text":
+			waMsg.Conversation = proto.String(msg.Payload)
+			m.log.Info("mensagem de TEXTO reconstruída para retry com sucesso",
+				zap.String("instance_id", instanceID),
+				zap.String("msg_id", id))
+			return waMsg
+		case "image", "video", "audio", "document":
+			m.log.Warn("não foi possível reconstruir mensagem de MÍDIA para retry sem Raw protobuf (futura implementação)",
+				zap.String("instance_id", instanceID),
+				zap.String("msg_id", id),
+				zap.String("type", msg.Type))
+		default:
+			m.log.Warn("tipo de mensagem desconhecido para reconstrução de retry",
+				zap.String("type", msg.Type),
+				zap.String("msg_id", id))
+		}
+
+		return nil
+	}
 }

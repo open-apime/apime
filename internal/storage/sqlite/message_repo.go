@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-
 	"github.com/open-apime/apime/internal/storage/model"
 )
 
@@ -124,6 +123,51 @@ func (r *messageRepo) UpdateStatusByWhatsAppID(ctx context.Context, whatsappID s
 	`
 	_, err := r.db.Conn.ExecContext(ctx, query, status, deliveredAt, whatsappID)
 	return err
+}
+
+func (r *messageRepo) GetByWhatsAppID(ctx context.Context, whatsappID string) (model.Message, error) {
+	query := `
+		SELECT id, instance_id, whatsapp_id, recipient, type, payload, status, delivered_at, created_at
+		FROM message_queue
+		WHERE whatsapp_id = ?
+		LIMIT 1
+	`
+
+	var msg model.Message
+	var payloadStr string
+	var createdAt string
+	var wID, deliveredAt sql.NullString
+
+	err := r.db.Conn.QueryRowContext(ctx, query, whatsappID).Scan(
+		&msg.ID, &msg.InstanceID, &wID, &msg.To, &msg.Type, &payloadStr, &msg.Status, &deliveredAt, &createdAt,
+	)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return model.Message{}, err // Retorna o erro nativo para evitar import cycle
+		}
+		return model.Message{}, err
+	}
+
+	msg.WhatsAppID = wID.String
+	if deliveredAt.Valid {
+		t, _ := time.Parse(time.RFC3339, deliveredAt.String)
+		msg.DeliveredAt = &t
+	}
+
+	var payloadMap map[string]interface{}
+	if err := json.Unmarshal([]byte(payloadStr), &payloadMap); err == nil {
+		if text, ok := payloadMap["text"].(string); ok {
+			msg.Payload = text
+		} else {
+			msg.Payload = payloadStr
+		}
+	} else {
+		msg.Payload = payloadStr
+	}
+
+	msg.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
+	return msg, nil
 }
 
 func (r *messageRepo) DeleteByInstanceID(ctx context.Context, instanceID string) error {

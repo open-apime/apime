@@ -74,7 +74,7 @@ func main() {
 		pgConnString = cfg.DB.DSN()
 	}
 
-	sessionManager := whatsmeow.NewManager(logr, cfg.WhatsApp.SessionKeyEnc, cfg.Storage.Driver, sessionDir, pgConnString, repos.DeviceConfig, repos.Instance, repos.HistorySync)
+	sessionManager := whatsmeow.NewManager(logr, cfg.WhatsApp.SessionKeyEnc, cfg.Storage.Driver, sessionDir, pgConnString, repos.DeviceConfig, repos.Instance, repos.HistorySync, repos.Message)
 
 	instanceService := instance.NewServiceWithSessionMessagesAndEventLogs(repos.Instance, repos.Message, repos.EventLog, sessionManager)
 

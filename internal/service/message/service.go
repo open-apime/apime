@@ -428,6 +428,9 @@ func (s *Service) Send(ctx context.Context, input SendInput) (model.Message, err
 		}
 	}
 
+	// Limpar o status "digitando" após o envio (sucesso ou falha final)
+	_ = client.SendChatPresence(ctx, toJID, types.ChatPresencePaused, types.ChatPresenceMediaText)
+
 	if err != nil {
 		msg.Status = "failed"
 		_ = s.repo.Update(ctx, msg)
