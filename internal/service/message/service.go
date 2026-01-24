@@ -206,9 +206,22 @@ func (s *Service) Send(ctx context.Context, input SendInput) (model.Message, err
 		return model.Message{}, fmt.Errorf("sessão indisponível para criptografia (pode levar alguns instantes após conectar), tente novamente")
 	}
 
-	if isColdStart && time.Since(connectedAt) < 20*time.Second {
-		s.log.Debug("Aguardando delay de segurança pós-conexão (Cold Start)", zap.String("instance_id", input.InstanceID))
-		time.Sleep(3 * time.Second)
+	if isColdStart {
+		timeSinceConnect := time.Since(connectedAt)
+		safeThreshold := 60 * time.Second
+
+		if timeSinceConnect < safeThreshold {
+			remainingWait := safeThreshold - timeSinceConnect
+			jitter := time.Duration(rand.Intn(5000)) * time.Millisecond
+			finalWait := remainingWait + jitter
+
+			s.log.Info("Estabilizando sessão...",
+				zap.String("instance_id", input.InstanceID),
+				zap.Duration("connected_for", timeSinceConnect),
+				zap.Duration("wait_time", finalWait))
+
+			time.Sleep(finalWait)
+		}
 	}
 
 	time.Sleep(1500 * time.Millisecond)
