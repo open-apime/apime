@@ -486,7 +486,7 @@ func (s *Service) Send(ctx context.Context, input SendInput) (model.Message, err
 		if strings.Contains(err.Error(), "untrusted identity") {
 			s.log.Warn("erro de identidade não confiável detectado, limpando identidade e tentando novamente",
 				zap.String("to", toJID.String()))
-			client.Store.Identities.DeleteIdentity(toJID.SignalAddress().String())
+			client.Store.Identities.DeleteIdentity(ctx, toJID.SignalAddress().String())
 			continue
 		}
 
