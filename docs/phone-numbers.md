@@ -22,17 +22,21 @@ A API **não** adiciona sufixo automaticamente para grupos.
 
 ---
 
-## Normalização de Números Brasileiros
+## Resolução Dinâmica de Números Brasileiros
 
-Para números brasileiros (prefixo `55`), a API remove automaticamente o 9º dígito de celulares quando necessário.
+Para números brasileiros (prefixo `55`), a API utiliza uma verificação dinâmica para determinar o formato correto (com ou sem o 9º dígito), consultando diretamente os servidores do WhatsApp.
 
-| Entrada (com 9)     | Saída (normalizado)   |
-|---------------------|-----------------------|
-| `5511999999999`     | `551199999999`        |
-| `5521987654321`     | `552187654321`        |
+### O Processo de Validação
+O código não faz distinção rígida entre fixo e celular baseada apenas em faixas de DDD. Em vez disso:
 
-A normalização ocorre apenas quando:
-- O número começa com `55`
-- O número local tem 9 dígitos e começa com `9`
-
-Números de 8 dígitos ou de outros países não são alterados.
+1. **Geração de Candidatos**:
+   - Se o número tem **13 dígitos** (ex: `5511999998888`), o sistema gera uma opção **sem** o 9º dígito (`551199998888`).
+   - Se o número tem **12 dígitos** (ex: `551133334444`), o sistema gera uma opção **com** o 9º dígito (`5511933334444`).
+   
+2. **Consulta (IsOnWhatsApp)**:
+   - O sistema envia ambos os formatos para a API do WhatsApp para verificar qual deles (ou ambos) possui uma conta ativa.
+   
+3. **Decisão**:
+   - Se o WhatsApp confirmar que um dos formatos existe, esse JID é utilizado.
+   - Se ambos existirem, o primeiro retornado é usado.
+   - Se o WhatsApp retornar vazia (número não registrado) para todas as tentativas, o sistema **NÃO enviará a mensagem** e retornará um erro `JID inválido: número não registrado no WhatsApp`. 

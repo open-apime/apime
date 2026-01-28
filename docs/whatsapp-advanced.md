@@ -1,7 +1,7 @@
 Endpoints avançados para operações de baixo nível do WhatsApp. Requerem **token de instância** (não JWT).
 
 ## Base Path
-`/api/instances/{id}/whatsapp/`
+Todos os endpoints abaixo são prefixados por: `https://whapi.agnus.cloud/api/instances/{id}/whatsapp`
 
 ---
 
@@ -9,13 +9,14 @@ Endpoints avançados para operações de baixo nível do WhatsApp. Requerem **to
 
 ### Verificar Número WhatsApp
 ```
-POST /check
+POST /api/instances/{id}/whatsapp/check
 Body: { "phone": "5511999999999" }
 ```
+**Nota:** O retorno inclui detalhes se o número existe e qual o JID correto.
 
 ### Definir Presença
 ```
-POST /presence
+POST /api/instances/{id}/whatsapp/presence
 Body: { "state": "available|unavailable|composing|recording|paused", "to": "JID" }
 ```
 
@@ -25,13 +26,13 @@ Body: { "state": "available|unavailable|composing|recording|paused", "to": "JID"
 
 ### Marcar Como Lida
 ```
-POST /messages/read
+POST /api/instances/{id}/whatsapp/messages/read
 Body: { "chat": "JID", "message_id": "ID", "sender": "JID", "played": false }
 ```
 
 ### Deletar Para Todos
 ```
-POST /messages/delete
+POST /api/instances/{id}/whatsapp/messages/delete
 Body: { "chat": "JID", "message_id": "ID", "sender": "JID" }
 ```
 
@@ -41,17 +42,17 @@ Body: { "chat": "JID", "message_id": "ID", "sender": "JID" }
 
 ### Listar Contatos
 ```
-GET /contacts
+GET /api/instances/{id}/whatsapp/contacts
 ```
 
 ### Obter Contato
 ```
-GET /contacts/{jid}
+GET /api/instances/{id}/whatsapp/contacts/{jid}
 ```
 
 ### Obter UserInfo
 ```
-GET /userinfo/{jid}
+GET /api/instances/{id}/whatsapp/userinfo/{jid}
 ```
 
 ---
@@ -60,18 +61,18 @@ GET /userinfo/{jid}
 
 ### Obter Configurações de Privacidade
 ```
-GET /privacy
+GET /api/instances/{id}/whatsapp/privacy
 ```
 
 ### Definir Configuração de Privacidade
 ```
-POST /privacy
+POST /api/instances/{id}/whatsapp/privacy
 Body: { "setting": "...", "value": "..." }
 ```
 
 ### Obter Status Privacy
 ```
-GET /status-privacy
+GET /api/instances/{id}/whatsapp/status-privacy
 ```
 
 ---
@@ -80,24 +81,24 @@ GET /status-privacy
 
 ### Obter Configurações do Chat
 ```
-GET /chat-settings/{chat}
+GET /api/instances/{id}/whatsapp/chat-settings/{chat}
 ```
 
 ### Definir Configurações do Chat
 ```
-POST /chat-settings/{chat}
+POST /api/instances/{id}/whatsapp/chat-settings/{chat}
 Body: { ... }
 ```
 
 ### Definir Mensagem de Status
 ```
-POST /status
+POST /api/instances/{id}/whatsapp/status
 Body: { "text": "..." }
 ```
 
 ### Timer de Mensagens que Desaparecem
 ```
-POST /disappearing-timer
+POST /api/instances/{id}/whatsapp/disappearing-timer
 Body: { "duration": 86400 }
 ```
 
@@ -107,18 +108,18 @@ Body: { "duration": 86400 }
 
 ### Obter QR de Contato
 ```
-GET /qr/contact
+GET /api/instances/{id}/whatsapp/qr/contact
 ```
 
 ### Resolver QR de Contato
 ```
-POST /qr/contact/resolve
+POST /api/instances/{id}/whatsapp/qr/contact/resolve
 Body: { "link": "..." }
 ```
 
 ### Resolver Link de Business Message
 ```
-POST /qr/business-message/resolve
+POST /api/instances/{id}/whatsapp/qr/business-message/resolve
 Body: { "link": "..." }
 ```
 
@@ -128,51 +129,51 @@ Body: { "link": "..." }
 
 ### Criar Grupo
 ```
-POST /groups
+POST /api/instances/{id}/whatsapp/groups
 Body: { "name": "Nome", "participants": ["JID1", "JID2"] }
 ```
 
 ### Obter Informações do Grupo
 ```
-GET /groups/{group}
+GET /api/instances/{id}/whatsapp/groups/{group}
 ```
 
 ### Sair do Grupo
 ```
-POST /groups/{group}/leave
+POST /api/instances/{id}/whatsapp/groups/{group}/leave
 ```
 
 ### Obter Link de Convite
 ```
-GET /groups/{group}/invite-link
+GET /api/instances/{id}/whatsapp/groups/{group}/invite-link
 ```
 
 ### Resolver Link de Convite
 ```
-POST /groups/resolve-invite
+POST /api/instances/{id}/whatsapp/groups/resolve-invite
 Body: { "link": "..." }
 ```
 
 ### Entrar com Link
 ```
-POST /groups/join
+POST /api/instances/{id}/whatsapp/groups/join
 Body: { "link": "..." }
 ```
 
 ### Gerenciar Participantes
 ```
-POST /groups/{group}/participants
+POST /api/instances/{id}/whatsapp/groups/{group}/participants
 Body: { "action": "add|remove|promote|demote", "participants": ["JID"] }
 ```
 
 ### Listar Solicitações de Entrada
 ```
-GET /groups/{group}/requests
+GET /api/instances/{id}/whatsapp/groups/{group}/requests
 ```
 
 ### Aprovar/Rejeitar Solicitações
 ```
-POST /groups/{group}/requests
+POST /api/instances/{id}/whatsapp/groups/{group}/requests
 Body: { "action": "approve|reject", "participants": ["JID"] }
 ```
 
@@ -182,24 +183,24 @@ Body: { "action": "approve|reject", "participants": ["JID"] }
 
 ### Inscrever em Atualizações
 ```
-POST /newsletters/{jid}/live-updates
+POST /api/instances/{id}/whatsapp/newsletters/{jid}/live-updates
 ```
 
 ### Marcar Como Visto
 ```
-POST /newsletters/{jid}/mark-viewed
+POST /api/instances/{id}/whatsapp/newsletters/{jid}/mark-viewed
 Body: { "server_ids": ["1", "2"] }
 ```
 
 ### Enviar Reação
 ```
-POST /newsletters/{jid}/reaction
+POST /api/instances/{id}/whatsapp/newsletters/{jid}/reaction
 Body: { "server_id": "123", "reaction": "👍", "message_id": "ID" }
 ```
 
 ### Obter Atualizações de Mensagens
 ```
-POST /newsletters/{jid}/message-updates
+POST /api/instances/{id}/whatsapp/newsletters/{jid}/message-updates
 ```
 
 ---
@@ -208,7 +209,7 @@ POST /newsletters/{jid}/message-updates
 
 ### Upload Direto
 ```
-POST /upload
+POST /api/instances/{id}/whatsapp/upload
 Body: { "media_type": "image|video|audio|document", "data_base64": "..." }
 ```
 Retorna URL para uso em mensagens.

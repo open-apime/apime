@@ -536,6 +536,9 @@ func (s *Service) Send(ctx context.Context, input SendInput) (model.Message, err
 	_ = client.SendChatPresence(ctx, toJID, types.ChatPresencePaused, types.ChatPresenceMediaText)
 
 	if err != nil {
+		jidCache.Delete(input.To)
+		s.log.Info("Removido do cache de JID devido a erro de envio", zap.String("phone", input.To))
+
 		msg.Status = "failed"
 		_ = s.repo.Update(ctx, msg)
 		return msg, fmt.Errorf("erro ao enviar mensagem após %d tentativas: %w", maxRetries, err)
@@ -612,6 +615,8 @@ func (s *Service) resolveJID(ctx context.Context, client *whatsmeow.Client, phon
 		candidates = append(candidates, optionWith9)
 	}
 
+	s.log.Debug("Candidatos gerados para validação", zap.String("original", phone), zap.Strings("candidates", candidates))
+
 	resp, err := client.IsOnWhatsApp(ctx, candidates)
 	if err != nil {
 		s.log.Warn("falha ao consultar IsOnWhatsApp, enviando original", zap.String("phone", phone), zap.Error(err))
@@ -627,8 +632,8 @@ func (s *Service) resolveJID(ctx context.Context, client *whatsmeow.Client, phon
 	}
 
 	if resolvedJID.IsEmpty() {
-		jid, _ := types.ParseJID(phone + "@s.whatsapp.net")
-		resolvedJID = jid
+		s.log.Warn("WhatsApp não encontrado", zap.String("original_phone", phone), zap.Any("candidates", candidates))
+		return types.EmptyJID, fmt.Errorf("%w: número não registrado no WhatsApp", ErrInvalidJID)
 	}
 
 	jidCache.Store(phone, jidCacheEntry{jid: resolvedJID, expiresAt: time.Now().Add(24 * time.Hour)})
