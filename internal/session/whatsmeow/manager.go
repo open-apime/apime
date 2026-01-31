@@ -77,9 +77,12 @@ type Manager struct {
 	expectedDisconnect map[string]bool
 	connectedAt        map[string]time.Time
 	messageRepo        storage.MessageRepository
+	sharedContainer    *sqlstore.Container
 }
 
 func NewManager(log *zap.Logger, encKey, storageDriver, baseDir, pgConnString string, deviceConfigRepo storage.DeviceConfigRepository, instanceRepo storage.InstanceRepository, historySyncRepo storage.HistorySyncRepository, messageRepo storage.MessageRepository) *Manager {
+	var sharedContainer *sqlstore.Container
+
 	if storageDriver != "postgres" {
 		if baseDir == "" {
 			baseDir = "/app/data/sessions"
@@ -88,6 +91,15 @@ func NewManager(log *zap.Logger, encKey, storageDriver, baseDir, pgConnString st
 			log.Info("Usando diretório de sessões configurado", zap.String("dir", baseDir))
 		}
 		os.MkdirAll(baseDir, 0755)
+	} else if pgConnString != "" {
+		clientLog := &zapLogger{log: log, module: "whatsmeow-sqlstore"}
+		container, err := sqlstore.New(context.Background(), "postgres", pgConnString, clientLog)
+		if err != nil {
+			log.Error("CRÍTICO: erro ao inicializar container PostgreSQL compartilhado", zap.Error(err))
+		} else {
+			sharedContainer = container
+			log.Info("Container PostgreSQL compartilhado inicializado com sucesso")
+		}
 	}
 
 	return &Manager{
@@ -109,6 +121,7 @@ func NewManager(log *zap.Logger, encKey, storageDriver, baseDir, pgConnString st
 		expectedDisconnect: make(map[string]bool),
 		connectedAt:        make(map[string]time.Time),
 		messageRepo:        messageRepo,
+		sharedContainer:    sharedContainer,
 	}
 }
 
@@ -216,13 +229,14 @@ func (m *Manager) createSession(ctx context.Context, instanceID string, forceRec
 	var err error
 
 	if m.storageDriver == "postgres" && m.pgConnString != "" {
-		m.log.Debug("criando store PostgreSQL", zap.String("instance_id", instanceID))
-		container, err = sqlstore.New(ctx, "postgres", m.pgConnString, clientLog)
-		if err != nil {
-			m.log.Error("erro ao criar store PostgreSQL", zap.String("instance_id", instanceID), zap.Error(err))
-			return "", fmt.Errorf("whatsmeow: criar store PostgreSQL: %w", err)
+		m.log.Debug("usando store PostgreSQL compartilhado", zap.String("instance_id", instanceID))
+
+		if m.sharedContainer == nil {
+			m.log.Error("container PostgreSQL compartilhado não foi inicializado", zap.String("instance_id", instanceID))
+			return "", fmt.Errorf("whatsmeow: store PostgreSQL não disponível")
 		}
 
+		container = m.sharedContainer
 		deviceStore = container.NewDevice()
 		m.log.Debug("novo device criado para PostgreSQL", zap.String("instance_id", instanceID))
 	} else {
@@ -686,9 +700,9 @@ func (m *Manager) deletePostgresSession(instanceID string) error {
 		return nil
 	}
 
-	container, err := sqlstore.New(ctx, "postgres", m.pgConnString, &zapLogger{log: m.log, module: "whatsmeow"})
-	if err != nil {
-		return fmt.Errorf("whatsmeow: criar container PostgreSQL: %w", err)
+	if m.sharedContainer == nil {
+		m.log.Error("container PostgreSQL compartilhado não disponível para deleção", zap.String("instance_id", instanceID))
+		return nil
 	}
 
 	jid, err := types.ParseJID(jidStr)
@@ -696,7 +710,7 @@ func (m *Manager) deletePostgresSession(instanceID string) error {
 		return fmt.Errorf("whatsmeow: parse device JID: %w", err)
 	}
 
-	store, err := container.GetDevice(ctx, jid)
+	store, err := m.sharedContainer.GetDevice(ctx, jid)
 	if err != nil {
 		return fmt.Errorf("whatsmeow: obter device PostgreSQL: %w", err)
 	}
@@ -769,7 +783,7 @@ func (m *Manager) GetClient(instanceID string) (*whatsmeow.Client, error) {
 		return client, nil
 	}
 
-	m.log.Debug("cliente não encontrado no map, tentando restaurar do SQLite",
+	m.log.Debug("cliente não encontrado no map, tentando restaurar sessão",
 		zap.String("instance_id", instanceID),
 	)
 
@@ -817,14 +831,15 @@ func (m *Manager) restoreSessionIfExists(ctx context.Context, instanceID string)
 			return nil, fmt.Errorf("sessão não encontrada")
 		}
 
-		container, err = sqlstore.New(ctx, "postgres", m.pgConnString, clientLog)
-		if err != nil {
-			m.log.Error("erro ao criar container PostgreSQL",
+		if m.sharedContainer == nil {
+			m.log.Error("container PostgreSQL não incializado",
 				zap.String("instance_id", instanceID),
-				zap.Error(err),
+				zap.Bool("has_conn_string", m.pgConnString != ""),
 			)
-			return nil, fmt.Errorf("sessão não encontrada")
+			return nil, fmt.Errorf("sessão não encontrada (DB error)")
 		}
+
+		container = m.sharedContainer
 
 		jid, err := types.ParseJID(inst.WhatsAppJID)
 		if err != nil {
@@ -1131,12 +1146,10 @@ func (m *Manager) GetDiagnostics(instanceID string) interface{} {
 			diag.DeviceJID = inst.WhatsAppJID
 			diag.HasDeviceStore = true
 
-			ctx := context.Background()
-			container, err := sqlstore.New(ctx, "postgres", m.pgConnString, &zapLogger{log: m.log, module: "whatsmeow"})
-			if err == nil {
+			if m.sharedContainer != nil {
 				jid, err := types.ParseJID(inst.WhatsAppJID)
 				if err == nil {
-					deviceStore, err := container.GetDevice(ctx, jid)
+					deviceStore, err := m.sharedContainer.GetDevice(context.Background(), jid)
 					if err == nil && deviceStore != nil {
 						diag.DevicePushName = deviceStore.PushName
 					}
