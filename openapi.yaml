@@ -257,6 +257,9 @@ paths:
                   example: "5511999999999"
                 text:
                   type: string
+                quoted:
+                  type: string
+                  description: Message ID (HEX) da mensagem citada
       responses:
         "200":
           description: Enviado
@@ -290,6 +293,9 @@ paths:
                 caption:
                   type: string
                   description: Legenda (opcional)
+                quoted:
+                  type: string
+                  description: ID da mensagem citada (opcional)
       responses:
         "200":
           description: Enviado
@@ -324,6 +330,9 @@ paths:
                 seconds:
                   type: integer
                   description: Duração em segundos
+                quoted:
+                  type: string
+                  description: ID da mensagem citada (opcional)
       responses:
         "200":
           description: Enviado
@@ -357,6 +366,9 @@ paths:
                 filename:
                   type: string
                   description: Nome do arquivo (opcional)
+                quoted:
+                  type: string
+                  description: ID da mensagem citada (opcional)
       responses:
         "200":
           description: Enviado

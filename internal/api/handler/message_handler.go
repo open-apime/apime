@@ -64,8 +64,9 @@ func (h *MessageHandler) enqueue(c *gin.Context) {
 }
 
 type sendTextRequest struct {
-	To   string `json:"to" binding:"required"`
-	Text string `json:"text" binding:"required"`
+	To     string `json:"to" binding:"required"`
+	Text   string `json:"text" binding:"required"`
+	Quoted string `json:"quoted"`
 }
 
 func (h *MessageHandler) sendText(c *gin.Context) {
@@ -92,6 +93,7 @@ func (h *MessageHandler) sendText(c *gin.Context) {
 		To:         req.To,
 		Type:       "text",
 		Text:       req.Text,
+		Quoted:     req.Quoted,
 	})
 	if err != nil {
 		if errors.Is(err, messageSvc.ErrInstanceNotConnected) {
@@ -162,6 +164,7 @@ func (h *MessageHandler) sendMedia(c *gin.Context) {
 		MediaData:  fileData,
 		MediaType:  file.Header.Get("Content-Type"),
 		Caption:    caption,
+		Quoted:     c.PostForm("quoted"),
 	})
 	if err != nil {
 		if errors.Is(err, messageSvc.ErrInstanceNotConnected) {
@@ -234,6 +237,7 @@ func (h *MessageHandler) sendAudio(c *gin.Context) {
 		MediaType:  mediaType,
 		Seconds:    seconds,
 		PTT:        ptt,
+		Quoted:     c.PostForm("quoted"),
 	})
 	if err != nil {
 		if errors.Is(err, messageSvc.ErrInstanceNotConnected) {
@@ -303,6 +307,7 @@ func (h *MessageHandler) sendDocument(c *gin.Context) {
 		MediaType:  file.Header.Get("Content-Type"),
 		FileName:   fileName,
 		Caption:    caption,
+		Quoted:     c.PostForm("quoted"),
 	})
 	if err != nil {
 		if errors.Is(err, messageSvc.ErrInstanceNotConnected) {

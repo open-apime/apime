@@ -132,6 +132,7 @@ type SendInput struct {
 	Seconds    int
 	PTT        bool
 	MessageID  string
+	Quoted     string
 }
 
 func (s *Service) Send(ctx context.Context, input SendInput) (model.Message, error) {
@@ -277,8 +278,19 @@ func (s *Service) Send(ctx context.Context, input SendInput) (model.Message, err
 		if input.Text == "" {
 			return model.Message{}, ErrInvalidPayload
 		}
-		waMessage = &waE2E.Message{
-			Conversation: proto.String(input.Text),
+		if input.Quoted != "" {
+			waMessage = &waE2E.Message{
+				ExtendedTextMessage: &waE2E.ExtendedTextMessage{
+					Text: proto.String(input.Text),
+					ContextInfo: &waE2E.ContextInfo{
+						StanzaID: proto.String(input.Quoted),
+					},
+				},
+			}
+		} else {
+			waMessage = &waE2E.Message{
+				Conversation: proto.String(input.Text),
+			}
 		}
 		messageType = "text"
 		payload = input.Text
@@ -313,6 +325,11 @@ func (s *Service) Send(ctx context.Context, input SendInput) (model.Message, err
 			if input.Caption != "" {
 				imageMsg.Caption = proto.String(input.Caption)
 			}
+			if input.Quoted != "" {
+				imageMsg.ContextInfo = &waE2E.ContextInfo{
+					StanzaID: proto.String(input.Quoted),
+				}
+			}
 			waMessage = &waE2E.Message{
 				ImageMessage: imageMsg,
 			}
@@ -328,6 +345,11 @@ func (s *Service) Send(ctx context.Context, input SendInput) (model.Message, err
 			}
 			if input.Caption != "" {
 				videoMsg.Caption = proto.String(input.Caption)
+			}
+			if input.Quoted != "" {
+				videoMsg.ContextInfo = &waE2E.ContextInfo{
+					StanzaID: proto.String(input.Quoted),
+				}
 			}
 			waMessage = &waE2E.Message{
 				VideoMessage: videoMsg,
@@ -397,6 +419,9 @@ func (s *Service) Send(ctx context.Context, input SendInput) (model.Message, err
 			StreamingSidecar:  sidecar,
 			MediaKeyTimestamp: proto.Int64(time.Now().Unix()),
 		}
+		if input.Quoted != "" {
+			audioMsg.ContextInfo.StanzaID = proto.String(input.Quoted)
+		}
 		waMessage = &waE2E.Message{
 			AudioMessage: audioMsg,
 		}
@@ -435,6 +460,11 @@ func (s *Service) Send(ctx context.Context, input SendInput) (model.Message, err
 		}
 		if input.Caption != "" {
 			docMsg.Caption = proto.String(input.Caption)
+		}
+		if input.Quoted != "" {
+			docMsg.ContextInfo = &waE2E.ContextInfo{
+				StanzaID: proto.String(input.Quoted),
+			}
 		}
 		waMessage = &waE2E.Message{
 			DocumentMessage: docMsg,
