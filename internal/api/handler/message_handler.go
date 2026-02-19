@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -11,6 +12,19 @@ import (
 	"github.com/open-apime/apime/internal/pkg/response"
 	messageSvc "github.com/open-apime/apime/internal/service/message"
 )
+
+// parseMentionedJids parses mentionedJids from form data (JSON array string)
+func parseMentionedJids(c *gin.Context) []string {
+	raw := c.PostForm("mentionedJids")
+	if raw == "" {
+		return nil
+	}
+	var jids []string
+	if err := json.Unmarshal([]byte(raw), &jids); err != nil {
+		return nil
+	}
+	return jids
+}
 
 type MessageHandler struct {
 	service *messageSvc.Service
@@ -64,9 +78,11 @@ func (h *MessageHandler) enqueue(c *gin.Context) {
 }
 
 type sendTextRequest struct {
-	To     string `json:"to" binding:"required"`
-	Text   string `json:"text" binding:"required"`
-	Quoted string `json:"quoted"`
+	To                string   `json:"to" binding:"required"`
+	Text              string   `json:"text" binding:"required"`
+	Quoted            string   `json:"quoted"`
+	QuotedParticipant string   `json:"quotedParticipant"`
+	MentionedJids     []string `json:"mentionedJids"`
 }
 
 func (h *MessageHandler) sendText(c *gin.Context) {
@@ -89,11 +105,13 @@ func (h *MessageHandler) sendText(c *gin.Context) {
 	// normalizeJID foi movido/refatorado para dentro do service
 
 	msg, err := h.service.Send(c.Request.Context(), messageSvc.SendInput{
-		InstanceID: instanceID,
-		To:         req.To,
-		Type:       "text",
-		Text:       req.Text,
-		Quoted:     req.Quoted,
+		InstanceID:    instanceID,
+		To:            req.To,
+		Type:          "text",
+		Text:          req.Text,
+		Quoted:        req.Quoted,
+		Participant:   req.QuotedParticipant,
+		MentionedJids: req.MentionedJids,
 	})
 	if err != nil {
 		if errors.Is(err, messageSvc.ErrInstanceNotConnected) {
@@ -158,13 +176,15 @@ func (h *MessageHandler) sendMedia(c *gin.Context) {
 	// Passar o JID/Phone cru para o service resolver dinamicamente via IsOnWhatsApp
 
 	msg, err := h.service.Send(c.Request.Context(), messageSvc.SendInput{
-		InstanceID: instanceID,
-		To:         to,
-		Type:       mediaType,
-		MediaData:  fileData,
-		MediaType:  file.Header.Get("Content-Type"),
-		Caption:    caption,
-		Quoted:     c.PostForm("quoted"),
+		InstanceID:    instanceID,
+		To:            to,
+		Type:          mediaType,
+		MediaData:     fileData,
+		MediaType:     file.Header.Get("Content-Type"),
+		Caption:       caption,
+		Quoted:        c.PostForm("quoted"),
+		Participant:   c.PostForm("quotedParticipant"),
+		MentionedJids: parseMentionedJids(c),
 	})
 	if err != nil {
 		if errors.Is(err, messageSvc.ErrInstanceNotConnected) {
@@ -230,14 +250,16 @@ func (h *MessageHandler) sendAudio(c *gin.Context) {
 	mediaType := file.Header.Get("Content-Type")
 
 	msg, err := h.service.Send(c.Request.Context(), messageSvc.SendInput{
-		InstanceID: instanceID,
-		To:         to,
-		Type:       "audio",
-		MediaData:  fileData,
-		MediaType:  mediaType,
-		Seconds:    seconds,
-		PTT:        ptt,
-		Quoted:     c.PostForm("quoted"),
+		InstanceID:    instanceID,
+		To:            to,
+		Type:          "audio",
+		MediaData:     fileData,
+		MediaType:     mediaType,
+		Seconds:       seconds,
+		PTT:           ptt,
+		Quoted:        c.PostForm("quoted"),
+		Participant:   c.PostForm("quotedParticipant"),
+		MentionedJids: parseMentionedJids(c),
 	})
 	if err != nil {
 		if errors.Is(err, messageSvc.ErrInstanceNotConnected) {
@@ -300,14 +322,16 @@ func (h *MessageHandler) sendDocument(c *gin.Context) {
 	// Passar o JID/Phone cru para o service resolver dinamicamente via IsOnWhatsApp
 
 	msg, err := h.service.Send(c.Request.Context(), messageSvc.SendInput{
-		InstanceID: instanceID,
-		To:         to,
-		Type:       "document",
-		MediaData:  fileData,
-		MediaType:  file.Header.Get("Content-Type"),
-		FileName:   fileName,
-		Caption:    caption,
-		Quoted:     c.PostForm("quoted"),
+		InstanceID:    instanceID,
+		To:            to,
+		Type:          "document",
+		MediaData:     fileData,
+		MediaType:     file.Header.Get("Content-Type"),
+		FileName:      fileName,
+		Caption:       caption,
+		Quoted:        c.PostForm("quoted"),
+		Participant:   c.PostForm("quotedParticipant"),
+		MentionedJids: parseMentionedJids(c),
 	})
 	if err != nil {
 		if errors.Is(err, messageSvc.ErrInstanceNotConnected) {

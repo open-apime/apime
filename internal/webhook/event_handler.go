@@ -239,6 +239,23 @@ func (h *EventHandler) normalizeEvent(ctx context.Context, instanceID string, cl
 				}
 			}
 		}
+
+		// Extrair MentionedJids do ContextInfo (qualquer tipo de mensagem)
+		var mentionedJids []string
+		if extText := evt.Message.GetExtendedTextMessage(); extText != nil && extText.GetContextInfo() != nil {
+			mentionedJids = extText.GetContextInfo().GetMentionedJID()
+		} else if img := evt.Message.GetImageMessage(); img != nil && img.GetContextInfo() != nil {
+			mentionedJids = img.GetContextInfo().GetMentionedJID()
+		} else if vid := evt.Message.GetVideoMessage(); vid != nil && vid.GetContextInfo() != nil {
+			mentionedJids = vid.GetContextInfo().GetMentionedJID()
+		} else if aud := evt.Message.GetAudioMessage(); aud != nil && aud.GetContextInfo() != nil {
+			mentionedJids = aud.GetContextInfo().GetMentionedJID()
+		} else if doc := evt.Message.GetDocumentMessage(); doc != nil && doc.GetContextInfo() != nil {
+			mentionedJids = doc.GetContextInfo().GetMentionedJID()
+		}
+		if len(mentionedJids) > 0 {
+			result["mentionedJids"] = mentionedJids
+		}
 	case *events.Receipt:
 		result["type"] = "receipt"
 		result["messageIds"] = evt.MessageIDs

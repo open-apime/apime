@@ -136,7 +136,9 @@ type SendInput struct {
 	Seconds    int
 	PTT        bool
 	MessageID  string
-	Quoted     string
+	Quoted        string
+	Participant   string
+	MentionedJids []string
 }
 
 func (s *Service) Send(ctx context.Context, input SendInput) (model.Message, error) {
@@ -277,18 +279,41 @@ func (s *Service) Send(ctx context.Context, input SendInput) (model.Message, err
 	var messageType string
 	var payload string
 
+	buildContextInfo := func(quotedID string, participant string, mentionedJids []string) *waE2E.ContextInfo {
+		ctxInfo := &waE2E.ContextInfo{}
+		if quotedID != "" {
+			ctxInfo.StanzaID = proto.String(quotedID)
+		}
+		if participant != "" {
+			if !strings.Contains(participant, "@") {
+				participant = participant + "@s.whatsapp.net"
+			}
+			ctxInfo.Participant = proto.String(participant)
+		}
+		if len(mentionedJids) > 0 {
+			normalized := make([]string, len(mentionedJids))
+			for i, jid := range mentionedJids {
+				if !strings.Contains(jid, "@") {
+					normalized[i] = jid + "@s.whatsapp.net"
+				} else {
+					normalized[i] = jid
+				}
+			}
+			ctxInfo.MentionedJID = normalized
+		}
+		return ctxInfo
+	}
+
 	switch input.Type {
 	case "text":
 		if input.Text == "" {
 			return model.Message{}, ErrInvalidPayload
 		}
-		if input.Quoted != "" {
+		if input.Quoted != "" || len(input.MentionedJids) > 0 {
 			waMessage = &waE2E.Message{
 				ExtendedTextMessage: &waE2E.ExtendedTextMessage{
-					Text: proto.String(input.Text),
-					ContextInfo: &waE2E.ContextInfo{
-						StanzaID: proto.String(input.Quoted),
-					},
+					Text:        proto.String(input.Text),
+					ContextInfo: buildContextInfo(input.Quoted, input.Participant, input.MentionedJids),
 				},
 			}
 		} else {
@@ -329,10 +354,8 @@ func (s *Service) Send(ctx context.Context, input SendInput) (model.Message, err
 			if input.Caption != "" {
 				imageMsg.Caption = proto.String(input.Caption)
 			}
-			if input.Quoted != "" {
-				imageMsg.ContextInfo = &waE2E.ContextInfo{
-					StanzaID: proto.String(input.Quoted),
-				}
+			if input.Quoted != "" || len(input.MentionedJids) > 0 {
+				imageMsg.ContextInfo = buildContextInfo(input.Quoted, input.Participant, input.MentionedJids)
 			}
 			waMessage = &waE2E.Message{
 				ImageMessage: imageMsg,
@@ -350,10 +373,8 @@ func (s *Service) Send(ctx context.Context, input SendInput) (model.Message, err
 			if input.Caption != "" {
 				videoMsg.Caption = proto.String(input.Caption)
 			}
-			if input.Quoted != "" {
-				videoMsg.ContextInfo = &waE2E.ContextInfo{
-					StanzaID: proto.String(input.Quoted),
-				}
+			if input.Quoted != "" || len(input.MentionedJids) > 0 {
+				videoMsg.ContextInfo = buildContextInfo(input.Quoted, input.Participant, input.MentionedJids)
 			}
 			waMessage = &waE2E.Message{
 				VideoMessage: videoMsg,
@@ -423,8 +444,11 @@ func (s *Service) Send(ctx context.Context, input SendInput) (model.Message, err
 			StreamingSidecar:  sidecar,
 			MediaKeyTimestamp: proto.Int64(time.Now().Unix()),
 		}
-		if input.Quoted != "" {
-			audioMsg.ContextInfo.StanzaID = proto.String(input.Quoted)
+		if input.Quoted != "" || len(input.MentionedJids) > 0 {
+			ctxInfo := buildContextInfo(input.Quoted, input.Participant, input.MentionedJids)
+			audioMsg.ContextInfo.StanzaID = ctxInfo.StanzaID
+			audioMsg.ContextInfo.Participant = ctxInfo.Participant
+			audioMsg.ContextInfo.MentionedJID = ctxInfo.MentionedJID
 		}
 		waMessage = &waE2E.Message{
 			AudioMessage: audioMsg,
@@ -465,10 +489,8 @@ func (s *Service) Send(ctx context.Context, input SendInput) (model.Message, err
 		if input.Caption != "" {
 			docMsg.Caption = proto.String(input.Caption)
 		}
-		if input.Quoted != "" {
-			docMsg.ContextInfo = &waE2E.ContextInfo{
-				StanzaID: proto.String(input.Quoted),
-			}
+		if input.Quoted != "" || len(input.MentionedJids) > 0 {
+			docMsg.ContextInfo = buildContextInfo(input.Quoted, input.Participant, input.MentionedJids)
 		}
 		waMessage = &waE2E.Message{
 			DocumentMessage: docMsg,
