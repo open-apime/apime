@@ -359,7 +359,7 @@ func (m *Manager) createSession(ctx context.Context, instanceID string, forceRec
 		}
 	}
 
-	m.applyDeviceConfig(instanceID, deviceStore)
+	pairingCleanup := m.applyDeviceConfig(instanceID, deviceStore)
 
 	client := whatsmeow.NewClient(deviceStore, clientLog)
 	client.EnableAutoReconnect = true
@@ -375,6 +375,9 @@ func (m *Manager) createSession(ctx context.Context, instanceID string, forceRec
 	qrChan, err := client.GetQRChannel(qrCtx)
 	if err != nil {
 		qrCancel()
+		if pairingCleanup != nil {
+			pairingCleanup()
+		}
 		m.log.Error("erro ao obter canal QR", zap.String("instance_id", instanceID), zap.Error(err))
 		return "", fmt.Errorf("whatsmeow: obter canal QR: %w", err)
 	}
@@ -383,6 +386,9 @@ func (m *Manager) createSession(ctx context.Context, instanceID string, forceRec
 	err = client.Connect()
 	if err != nil {
 		qrCancel()
+		if pairingCleanup != nil {
+			pairingCleanup()
+		}
 		m.log.Error("erro ao conectar cliente", zap.String("instance_id", instanceID), zap.Error(err))
 		return "", fmt.Errorf("whatsmeow: conectar: %w", err)
 	}
@@ -392,7 +398,7 @@ func (m *Manager) createSession(ctx context.Context, instanceID string, forceRec
 	m.qrContexts[instanceID] = qrCancel
 	m.mu.Unlock()
 
-	go m.monitorQRChannel(instanceID, client, qrChan, qrCancel)
+	go m.monitorQRChannel(instanceID, client, qrChan, qrCancel, pairingCleanup)
 
 	m.log.Info("cliente conectado, aguardando QR code", zap.String("instance_id", instanceID))
 
@@ -437,10 +443,14 @@ func (m *Manager) createSession(ctx context.Context, instanceID string, forceRec
 	}
 }
 
-func (m *Manager) monitorQRChannel(instanceID string, client *whatsmeow.Client, qrChan <-chan whatsmeow.QRChannelItem, cancel context.CancelFunc) {
+func (m *Manager) monitorQRChannel(instanceID string, client *whatsmeow.Client, qrChan <-chan whatsmeow.QRChannelItem, cancel context.CancelFunc, pairingCleanup func()) {
 	pairingSucceeded := false
 
 	defer func() {
+		if pairingCleanup != nil {
+			pairingCleanup()
+		}
+
 		cancel()
 		m.mu.Lock()
 		delete(m.qrContexts, instanceID)
@@ -1040,7 +1050,9 @@ func (m *Manager) restoreSessionIfExists(ctx context.Context, instanceID string)
 		zap.String("push_name", deviceStore.PushName),
 	)
 
-	m.applyDeviceConfig(instanceID, deviceStore)
+	if cleanup := m.applyDeviceConfig(instanceID, deviceStore); cleanup != nil {
+		cleanup()
+	}
 
 	client := whatsmeow.NewClient(deviceStore, clientLog)
 
@@ -1392,15 +1404,14 @@ func mapPlatformType(platformType string) *waCompanionReg.DeviceProps_PlatformTy
 	}
 }
 
-func (m *Manager) applyDeviceConfig(instanceID string, deviceStore *store.Device) {
+func (m *Manager) applyDeviceConfig(instanceID string, deviceStore *store.Device) func() {
 	if deviceStore.ID != nil && !deviceStore.ID.IsEmpty() {
-		return
+		return nil
 	}
 
 	profile := getDeviceProfile(instanceID)
 
 	deviceConfigMu.Lock()
-	defer deviceConfigMu.Unlock()
 
 	originalPlatformType := store.DeviceProps.PlatformType
 	originalOS := store.DeviceProps.Os
@@ -1411,6 +1422,8 @@ func (m *Manager) applyDeviceConfig(instanceID string, deviceStore *store.Device
 	store.SetOSInfo(profile.OSName, profile.Version)
 	store.DeviceProps.PlatformType = mapPlatformType(profile.PlatformType)
 
+	deviceConfigMu.Unlock()
+
 	m.log.Info("perfil de dispositivo aplicado para registro",
 		zap.String("instance_id", instanceID),
 		zap.String("platform_type", profile.PlatformType),
@@ -1418,12 +1431,8 @@ func (m *Manager) applyDeviceConfig(instanceID string, deviceStore *store.Device
 		zap.String("version", fmt.Sprintf("%d.%d.%d", profile.Version[0], profile.Version[1], profile.Version[2])),
 	)
 
-	go func() {
-		time.Sleep(10 * time.Second)
-
+	return func() {
 		deviceConfigMu.Lock()
-		defer deviceConfigMu.Unlock()
-
 		store.DeviceProps.PlatformType = originalPlatformType
 		store.DeviceProps.Os = originalOS
 		if store.DeviceProps.Version != nil {
@@ -1431,9 +1440,11 @@ func (m *Manager) applyDeviceConfig(instanceID string, deviceStore *store.Device
 			store.DeviceProps.Version.Secondary = originalVersionSecondary
 			store.DeviceProps.Version.Tertiary = originalVersionTertiary
 		}
+		deviceConfigMu.Unlock()
 
-		m.log.Debug("valores globais do WhatsMeow restaurados após registro")
-	}()
+		m.log.Debug("valores globais do WhatsMeow restaurados após registro",
+			zap.String("instance_id", instanceID))
+	}
 }
 
 func (m *Manager) handleEvent(instanceID string, evt any) {
