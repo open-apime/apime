@@ -42,4 +42,3 @@ Se o **apime** te ajudou, contribua com o desenvolvimento:
 
 ### ₿ Bitcoin (BTC)
 - **Endereço:** `1PR1ciDQ6wTLJ2WfCDE2AcXb4uAac1HbyQ`
-
