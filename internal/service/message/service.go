@@ -39,6 +39,7 @@ var (
 	ErrInstanceNotConnected = errors.New("instância não conectada")
 	ErrInvalidJID           = errors.New("JID inválido")
 	ErrUnsupportedMediaType = errors.New("tipo de mídia não suportado")
+	ErrSessionUnavailable   = errors.New("sessão indisponível")
 )
 
 type Service struct {
@@ -209,7 +210,7 @@ func (s *Service) Send(ctx context.Context, input SendInput) (model.Message, err
 	}
 
 	if !isReady {
-		return model.Message{}, fmt.Errorf("sessão indisponível para criptografia (pode levar alguns instantes após conectar), tente novamente")
+		return model.Message{}, fmt.Errorf("%w: criptografia não pronta (pode levar alguns instantes após conectar)", ErrSessionUnavailable)
 	}
 
 	if isColdStart {
@@ -234,7 +235,10 @@ func (s *Service) Send(ctx context.Context, input SendInput) (model.Message, err
 
 	toJID, err := s.ResolveJID(ctx, client, input.To)
 	if err != nil {
-		return model.Message{}, fmt.Errorf("%w: %s", ErrInvalidJID, input.To)
+		if errors.Is(err, ErrInvalidJID) {
+			return model.Message{}, err
+		}
+		return model.Message{}, fmt.Errorf("falha ao resolver destinatário %s: %w", input.To, err)
 	}
 
 	if toJID.Server == types.DefaultUserServer || toJID.Server == types.HiddenUserServer {
@@ -532,6 +536,15 @@ func (s *Service) Send(ctx context.Context, input SendInput) (model.Message, err
 
 		resp, err = client.SendMessage(ctx, toJID, waMessage)
 		if err == nil {
+			// Validar se WhatsApp realmente aceitou
+			if resp.ID == "" {
+				s.log.Warn("WhatsApp retornou ID vazio - envio pode ter falhado",
+					zap.Int("attempt", attempt),
+					zap.String("to", toJID.String()))
+				err = fmt.Errorf("WhatsApp não confirmou envio (ID vazio)")
+				continue // Tenta retry
+			}
+
 			s.log.Info("mensagem enviada com sucesso",
 				zap.Int("attempt", attempt),
 				zap.String("to", toJID.String()),
@@ -704,8 +717,8 @@ func (s *Service) ResolveJID(ctx context.Context, client *whatsmeow.Client, phon
 
 	resp, err := client.IsOnWhatsApp(ctx, candidates)
 	if err != nil {
-		s.log.Warn("falha ao consultar IsOnWhatsApp, enviando original", zap.String("phone", phone), zap.Error(err))
-		return types.ParseJID(phone + "@s.whatsapp.net")
+		s.log.Error("falha ao consultar IsOnWhatsApp - abortando envio", zap.String("phone", phone), zap.Error(err))
+		return types.EmptyJID, fmt.Errorf("falha ao validar número no WhatsApp: %w", err)
 	}
 
 	resolvedJID := types.EmptyJID

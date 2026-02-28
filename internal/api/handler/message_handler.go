@@ -118,6 +118,8 @@ func (h *MessageHandler) sendText(c *gin.Context) {
 			response.ErrorWithMessage(c, http.StatusBadRequest, "instância não conectada")
 		} else if errors.Is(err, messageSvc.ErrInvalidJID) {
 			response.Error(c, http.StatusBadRequest, err)
+		} else if errors.Is(err, messageSvc.ErrSessionUnavailable) {
+			response.ErrorWithMessage(c, http.StatusServiceUnavailable, "sessão não pronta, tente novamente")
 		} else {
 			response.Error(c, http.StatusInternalServerError, err)
 		}
@@ -189,6 +191,10 @@ func (h *MessageHandler) sendMedia(c *gin.Context) {
 	if err != nil {
 		if errors.Is(err, messageSvc.ErrInstanceNotConnected) {
 			response.ErrorWithMessage(c, http.StatusBadRequest, "instância não conectada")
+		} else if errors.Is(err, messageSvc.ErrInvalidJID) {
+			response.Error(c, http.StatusBadRequest, err)
+		} else if errors.Is(err, messageSvc.ErrSessionUnavailable) {
+			response.ErrorWithMessage(c, http.StatusServiceUnavailable, "sessão não pronta, tente novamente")
 		} else {
 			response.Error(c, http.StatusInternalServerError, err)
 		}
@@ -264,6 +270,10 @@ func (h *MessageHandler) sendAudio(c *gin.Context) {
 	if err != nil {
 		if errors.Is(err, messageSvc.ErrInstanceNotConnected) {
 			response.ErrorWithMessage(c, http.StatusBadRequest, "instância não conectada")
+		} else if errors.Is(err, messageSvc.ErrInvalidJID) {
+			response.Error(c, http.StatusBadRequest, err)
+		} else if errors.Is(err, messageSvc.ErrSessionUnavailable) {
+			response.ErrorWithMessage(c, http.StatusServiceUnavailable, "sessão não pronta, tente novamente")
 		} else {
 			response.Error(c, http.StatusInternalServerError, err)
 		}
@@ -336,6 +346,10 @@ func (h *MessageHandler) sendDocument(c *gin.Context) {
 	if err != nil {
 		if errors.Is(err, messageSvc.ErrInstanceNotConnected) {
 			response.ErrorWithMessage(c, http.StatusBadRequest, "instância não conectada")
+		} else if errors.Is(err, messageSvc.ErrInvalidJID) {
+			response.Error(c, http.StatusBadRequest, err)
+		} else if errors.Is(err, messageSvc.ErrSessionUnavailable) {
+			response.ErrorWithMessage(c, http.StatusServiceUnavailable, "sessão não pronta, tente novamente")
 		} else {
 			response.Error(c, http.StatusInternalServerError, err)
 		}
