@@ -13,7 +13,7 @@ require (
 	github.com/mattn/go-sqlite3 v1.14.34
 	github.com/redis/go-redis/v9 v9.18.0
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
-	go.mau.fi/whatsmeow v0.0.0-20260227183159-ddb6e78053f8
+	go.mau.fi/whatsmeow v0.0.0-20260306150847-8f48ec56ce6c
 	go.uber.org/zap v1.27.1
 	golang.org/x/crypto v0.48.0
 	google.golang.org/protobuf v1.36.11
@@ -93,4 +93,4 @@ exclude (
 	github.com/gin-gonic/gin v1.11.0
 )
 
-replace go.mau.fi/whatsmeow => github.com/Whalabs/whatsmeow v0.0.0-20260227183159-ddb6e78053f8
+replace go.mau.fi/whatsmeow => github.com/Whalabs/whatsmeow v0.0.0-20260306150847-8f48ec56ce6c
