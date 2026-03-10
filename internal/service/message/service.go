@@ -725,28 +725,16 @@ func (s *Service) ResolveJID(ctx context.Context, client *whatsmeow.Client, phon
 		return types.ParseJID(phone + "@s.whatsapp.net")
 	}
 
+	// Consulta sequencial: 1 número por vez (simula comportamento humano)
+	// Se o original não for encontrado e houver variante, tenta com delay
+
 	delay := 1000 + rand.Intn(2000)
 	s.log.Debug("Aplicando delay de segurança antes de IsOnWhatsApp", zap.Int("ms", delay))
 	time.Sleep(time.Duration(delay) * time.Millisecond)
 
-	candidates := []string{phone}
-
-	if len(phone) == 13 {
-		optionWithout9 := phone[:4] + phone[5:]
-		candidates = append(candidates, optionWithout9)
-	} else if len(phone) == 12 {
-		afterDDD := phone[4:]
-		if len(afterDDD) > 0 && afterDDD[0] >= '2' && afterDDD[0] <= '5' {
-			s.log.Debug("Número fixo detectado (prefixo 2-5), não adicionando 9° dígito", zap.String("phone", phone))
-		} else {
-			optionWith9 := phone[:4] + "9" + afterDDD
-			candidates = append(candidates, optionWith9)
-		}
-	}
-
-	s.log.Debug("Candidatos gerados para validação", zap.String("original", phone), zap.Strings("candidates", candidates))
-
-	resp, err := client.IsOnWhatsApp(ctx, candidates)
+	// 1. Consultar número original
+	s.log.Debug("Consultando IsOnWhatsApp", zap.String("phone", phone))
+	resp, err := client.IsOnWhatsApp(ctx, []string{phone})
 	if err != nil {
 		s.log.Error("falha ao consultar IsOnWhatsApp - abortando envio", zap.String("phone", phone), zap.Error(err))
 		return types.EmptyJID, fmt.Errorf("falha ao validar número no WhatsApp: %w", err)
@@ -754,15 +742,49 @@ func (s *Service) ResolveJID(ctx context.Context, client *whatsmeow.Client, phon
 
 	resolvedJID := types.EmptyJID
 	for _, item := range resp {
-		if item.JID.User != "" {
+		if item.IsIn && item.JID.User != "" {
 			resolvedJID = item.JID
 			break
 		}
 	}
 
+	// 2. Se não encontrou, tentar variante (BR apenas, 1 número por vez)
+	if resolvedJID.IsEmpty() {
+		var variant string
+
+		if len(phone) == 13 && strings.HasPrefix(phone, "55") {
+			// 13 dígitos: tentar sem o 9
+			variant = phone[:4] + phone[5:]
+		} else if len(phone) == 12 && strings.HasPrefix(phone, "55") {
+			afterDDD := phone[4:]
+			// 12 dígitos: tentar com 9 apenas para celulares (prefixo 6-9)
+			if len(afterDDD) > 0 && afterDDD[0] >= '6' && afterDDD[0] <= '9' {
+				variant = phone[:4] + "9" + afterDDD
+			}
+		}
+
+		if variant != "" {
+			variantDelay := 1000 + rand.Intn(2000)
+			s.log.Debug("Tentando variante com delay", zap.String("variant", variant), zap.Int("ms", variantDelay))
+			time.Sleep(time.Duration(variantDelay) * time.Millisecond)
+
+			resp2, err2 := client.IsOnWhatsApp(ctx, []string{variant})
+			if err2 != nil {
+				s.log.Warn("falha ao consultar variante", zap.String("variant", variant), zap.Error(err2))
+			} else {
+				for _, item := range resp2 {
+					if item.IsIn && item.JID.User != "" {
+						resolvedJID = item.JID
+						break
+					}
+				}
+			}
+		}
+	}
+
 	if resolvedJID.IsEmpty() {
 		negativeTTL := time.Duration(s.cfg.JIDCacheNegativeTTLDays) * 24 * time.Hour
-		s.log.Warn("WhatsApp não encontrado - registrando em cache negativo", zap.String("original_phone", phone), zap.Any("candidates", candidates), zap.Duration("ttl", negativeTTL))
+		s.log.Warn("WhatsApp não encontrado - registrando em cache negativo", zap.String("phone", phone), zap.Duration("ttl", negativeTTL))
 		jidCache.Store(phone, jidCacheEntry{jid: types.EmptyJID, expiresAt: time.Now().Add(negativeTTL)})
 
 		if s.contactRepo != nil {
