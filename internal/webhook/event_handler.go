@@ -174,6 +174,10 @@ func (h *EventHandler) normalizeEvent(ctx context.Context, instanceID string, cl
 		// Track inbound messages for auto MarkRead before sending
 		if !evt.Info.IsFromMe {
 			messageSvc.TrackInbound(instanceID, chatJID, evt.Info.ID, senderJID)
+			h.log.Info("[markread] inbound tracked",
+				zap.String("key", instanceID+":"+chatJID),
+				zap.String("msg_id", evt.Info.ID),
+				zap.String("sender", senderJID))
 		}
 
 		if evt.Message.GetConversation() != "" {

@@ -244,9 +244,17 @@ func (s *Service) Send(ctx context.Context, input SendInput) (model.Message, err
 		markMsgID := input.MarkReadMessageID
 		markSender := input.MarkReadSender
 		if markMsgID == "" {
+			trackerKey := input.InstanceID + ":" + toJID.String()
 			if entry, ok := popLastInbound(input.InstanceID, toJID.String()); ok {
 				markMsgID = entry.messageID
 				markSender = entry.senderJID
+				s.log.Info("[markread] inbound tracker hit",
+					zap.String("key", trackerKey),
+					zap.String("message_id", markMsgID),
+					zap.String("sender", markSender))
+			} else {
+				s.log.Info("[markread] inbound tracker miss — nenhuma mensagem pendente",
+					zap.String("key", trackerKey))
 			}
 		}
 		if markMsgID != "" {
@@ -256,10 +264,18 @@ func (s *Service) Send(ctx context.Context, input SendInput) (model.Message, err
 					senderJID = parsed
 				}
 			}
-			_ = client.MarkRead(ctx, []types.MessageID{types.MessageID(markMsgID)}, time.Now(), toJID, senderJID, types.ReceiptTypeRead)
-			s.log.Debug("mensagem marcada como lida antes do envio",
-				zap.String("message_id", markMsgID),
-				zap.String("to", toJID.String()))
+			if markErr := client.MarkRead(ctx, []types.MessageID{types.MessageID(markMsgID)}, time.Now(), toJID, senderJID, types.ReceiptTypeRead); markErr != nil {
+				s.log.Error("[markread] erro ao marcar como lida",
+					zap.String("message_id", markMsgID),
+					zap.String("chat", toJID.String()),
+					zap.String("sender", senderJID.String()),
+					zap.Error(markErr))
+			} else {
+				s.log.Info("[markread] mensagem marcada como lida antes do envio",
+					zap.String("message_id", markMsgID),
+					zap.String("chat", toJID.String()),
+					zap.String("sender", senderJID.String()))
+			}
 		}
 
 		// 3. Send typing/recording presence (audio shows "recording audio...")
