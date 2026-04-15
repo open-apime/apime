@@ -1477,13 +1477,24 @@ func (m *Manager) handleEvent(instanceID string, evt any) {
 			m.log.Warn("RECEBIDO RETRY RECEIPT - Possível falha de decriptação no destino. Acionando reset proativo.",
 				zap.String("instance_id", instanceID),
 				zap.Strings("msg_ids", receipt.MessageIDs),
-				zap.String("chat", receipt.Chat.String()))
+				zap.String("chat", receipt.Chat.String()),
+				zap.String("sender", receipt.Sender.String()))
 
 			go func() {
+				ctx := context.Background()
 				m.log.Info("Acionando reset completo (sessão + identidade) devido a retry receipt",
 					zap.String("instance_id", instanceID),
 					zap.String("chat", receipt.Chat.String()))
-				_ = m.ResetContactSession(context.Background(), instanceID, receipt.Chat.String())
+				_ = m.ResetContactSession(ctx, instanceID, receipt.Chat.String())
+
+				// Se o sender é um device linked diferente do chat principal, resetar também
+				if receipt.Sender.User == receipt.Chat.User && receipt.Sender.Device != receipt.Chat.Device && receipt.Sender.Device != 0 {
+					m.log.Info("Sender é device linked com sessão diferente, acionando reset adicional",
+						zap.String("instance_id", instanceID),
+						zap.String("sender", receipt.Sender.String()),
+						zap.Uint16("device", receipt.Sender.Device))
+					_ = m.ResetContactSession(ctx, instanceID, receipt.Sender.String())
+				}
 			}()
 		}
 	}
