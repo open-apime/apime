@@ -28,17 +28,3 @@ Baseada na biblioteca [WhatsMeow](https://github.com/tulir/whatsmeow) com dashbo
 
 - **API Specification:** `openapi.yaml`
 - **Documentação:** docs/
-
-
-## ❤️ Apoie o projeto
-
-Se o **apime** te ajudou, contribua com o desenvolvimento:
-
-### 🇧🇷 Pix (Brasil)
-
-<img src="docs/qrcode-pix.png" width="120" alt="QRCode Pix" />
-
-- **Chave Aleatória:** `b5b1510a-b738-4640-b374-7ed2d16163a4`
-
-### ₿ Bitcoin (BTC)
-- **Endereço:** `1PR1ciDQ6wTLJ2WfCDE2AcXb4uAac1HbyQ`

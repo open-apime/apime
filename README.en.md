@@ -28,11 +28,3 @@ Based on the [WhatsMeow](https://github.com/tulir/whatsmeow) library with dashbo
 
 - **API Specification:** `openapi.yaml`
 - **Documentation:** docs/
-
-
-## ❤️ Support the project
-
-If **apime** helped you, consider supporting the development:
-
-### ₿ Bitcoin (BTC)
-- **Address:** `1PR1ciDQ6wTLJ2WfCDE2AcXb4uAac1HbyQ`
