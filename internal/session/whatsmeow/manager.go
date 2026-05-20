@@ -364,6 +364,7 @@ func (m *Manager) createSession(ctx context.Context, instanceID string, forceRec
 	client := whatsmeow.NewClient(deviceStore, clientLog)
 	client.EnableAutoReconnect = true
 	client.ManualHistorySyncDownload = true
+	client.AutomaticMessageRerequestFromPhone = true
 
 	client.GetMessageForRetry = m.getMessageForRetryCallback(instanceID)
 
@@ -694,6 +695,7 @@ func (m *Manager) RestoreSession(ctx context.Context, instanceID string, encrypt
 	}
 
 	client := whatsmeow.NewClient(deviceStore, clientLog)
+	client.AutomaticMessageRerequestFromPhone = true
 
 	err = client.Connect()
 	if err != nil {
@@ -1055,6 +1057,7 @@ func (m *Manager) restoreSessionIfExists(ctx context.Context, instanceID string)
 	}
 
 	client := whatsmeow.NewClient(deviceStore, clientLog)
+	client.AutomaticMessageRerequestFromPhone = true
 
 	client.GetMessageForRetry = m.getMessageForRetryCallback(instanceID)
 
