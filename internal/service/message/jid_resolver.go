@@ -53,7 +53,7 @@ func (s *Service) ResolveJID(ctx context.Context, client *whatsmeow.Client, phon
 				return types.EmptyJID, fmt.Errorf("%w: número não registrado no WhatsApp (cache)", ErrInvalidJID)
 			}
 			s.log.Debug("JID resolvido via cache em memória", zap.String("phone", phone), zap.String("jid", entry.jid.String()))
-			return entry.jid, nil
+			return entry.jid.ToNonAD(), nil
 		}
 		jidCache.Delete(phone)
 	}
@@ -70,6 +70,7 @@ func (s *Service) ResolveJID(ctx context.Context, client *whatsmeow.Client, phon
 			} else {
 				jid, jerr := types.ParseJID(contact.JID)
 				if jerr == nil {
+					jid = jid.ToNonAD()
 					positiveDBTTL := time.Duration(s.cfg.JIDCachePositiveDBTTLDays) * 24 * time.Hour
 					if time.Since(contact.UpdatedAt) < positiveDBTTL {
 						s.log.Debug("JID resolvido via banco de dados", zap.String("phone", phone), zap.String("jid", jid.String()))
@@ -178,6 +179,9 @@ func (s *Service) ConfirmJID(ctx context.Context, jid types.JID) {
 	if jid.Server != types.DefaultUserServer || jid.User == "" {
 		return
 	}
+	// Normaliza para JID de usuário (device 0) — eventos vêm com device part
+	// (ex.: 554788359190:48@s.whatsapp.net) e o SendMessage exige destinatário sem device.
+	jid = jid.ToNonAD()
 	phone := jid.User
 	jidStr := jid.String()
 
