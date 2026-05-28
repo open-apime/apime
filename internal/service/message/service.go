@@ -48,6 +48,7 @@ type SessionManager interface {
 	HasSession(instanceID string, jid types.JID) (bool, error)
 	GetPreKeyCount(instanceID string) (int, error)
 	GetConnectedAt(instanceID string) time.Time
+	CacheOutgoingMessage(id string, msg *waE2E.Message)
 }
 
 func NewService(repo storage.MessageRepository, q queue.Queue, cfg config.WhatsAppConfig, log *zap.Logger) *Service {
@@ -654,6 +655,9 @@ func (s *Service) Send(ctx context.Context, input SendInput) (model.Message, err
 				zap.String("to", toJID.String()),
 				zap.String("server_id", resp.ID),
 				zap.Int64("timestamp", resp.Timestamp.Unix()))
+			if s.sessionMgr != nil {
+				s.sessionMgr.CacheOutgoingMessage(resp.ID, waMessage)
+			}
 			break
 		}
 

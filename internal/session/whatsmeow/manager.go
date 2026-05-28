@@ -131,6 +131,31 @@ type Manager struct {
 	connectedAt        map[string]time.Time
 	messageRepo        storage.MessageRepository
 	sharedContainer    *sqlstore.Container
+	outgoingMsgCache   sync.Map // msgID -> outgoingMsgEntry, para retry de qualquer tipo (inclusive mídia)
+}
+
+type outgoingMsgEntry struct {
+	msg *waE2E.Message
+	at  time.Time
+}
+
+const outgoingMsgCacheTTL = 30 * time.Minute
+
+// CacheOutgoingMessage guarda o protobuf bruto da mensagem enviada para permitir
+// reconstrução em retry receipts (mídia inclusa, que não dá para remontar do banco).
+func (m *Manager) CacheOutgoingMessage(id string, msg *waE2E.Message) {
+	if id == "" || msg == nil {
+		return
+	}
+	now := time.Now()
+	m.outgoingMsgCache.Store(id, outgoingMsgEntry{msg: msg, at: now})
+	// Limpeza oportunista de entradas expiradas.
+	m.outgoingMsgCache.Range(func(k, v any) bool {
+		if e, ok := v.(outgoingMsgEntry); ok && now.Sub(e.at) > outgoingMsgCacheTTL {
+			m.outgoingMsgCache.Delete(k)
+		}
+		return true
+	})
 }
 
 func NewManager(log *zap.Logger, encKey, storageDriver, baseDir, pgConnString string, instanceRepo storage.InstanceRepository, historySyncRepo storage.HistorySyncRepository, messageRepo storage.MessageRepository, eventLogRepo storage.EventLogRepository) *Manager {
@@ -1972,6 +1997,17 @@ func (m *Manager) getMessageForRetryCallback(instanceID string) func(types.JID, 
 			zap.String("instance_id", instanceID),
 			zap.String("msg_id", id),
 			zap.String("chat", chat.String()))
+
+		// 1. Cache em memória do protobuf bruto — cobre qualquer tipo, inclusive mídia.
+		if val, ok := m.outgoingMsgCache.Load(id); ok {
+			if entry, ok := val.(outgoingMsgEntry); ok && entry.msg != nil && time.Since(entry.at) <= outgoingMsgCacheTTL {
+				m.log.Info("mensagem reconstruída para retry via cache de protobuf",
+					zap.String("instance_id", instanceID),
+					zap.String("msg_id", id))
+				return entry.msg
+			}
+			m.outgoingMsgCache.Delete(id)
+		}
 
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
