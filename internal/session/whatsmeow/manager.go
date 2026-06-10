@@ -637,7 +637,30 @@ func (m *Manager) GetQR(ctx context.Context, instanceID string) (string, error) 
 						zap.String("instance_id", instanceID))
 					return m.CreateSession(ctx, instanceID)
 				}
-				return "", fmt.Errorf("QR code ainda não disponível, aguarde alguns segundos")
+				// QR expirou (timeout do WhatsApp apagou currentQRs) mas o canal
+				// segue aberto e mudo — versões recentes do whatsmeow mantêm o
+				// qrChannel vivo após o timeout em vez de fechá-lo. Sem isto, o
+				// GetQR fica preso retornando "aguarde" pra sempre e o frontend
+				// nunca recebe um QR novo. Recriamos a sessão forçando novo canal.
+				m.log.Warn("canal QR vivo mas sem código após timeout, recriando sessão",
+					zap.String("instance_id", instanceID))
+				client.Disconnect()
+				m.mu.Lock()
+				delete(m.clients, instanceID)
+				delete(m.currentQRs, instanceID)
+				delete(m.pairingSuccess, instanceID)
+				if cancel, ok := m.qrContexts[instanceID]; ok {
+					cancel()
+					delete(m.qrContexts, instanceID)
+				}
+				m.mu.Unlock()
+				if m.storageDriver != "postgres" {
+					dbPath := filepath.Join(m.baseDir, instanceID+".db")
+					if _, err := os.Stat(dbPath); err == nil {
+						_ = os.Remove(dbPath)
+					}
+				}
+				return m.CreateSession(ctx, instanceID)
 			case <-ctx.Done():
 				return "", ctx.Err()
 			}
