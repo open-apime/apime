@@ -126,6 +126,12 @@ func (h *EventHandler) Handle(ctx context.Context, instanceID string, instanceJI
 
 	normalized := h.normalizeEvent(ctx, instanceID, client, evt)
 
+	// Eventos marcados como "ignore" não geram webhook (ex.: mensagem
+	// indescriptografável vinda de mim mesmo ou de grupo).
+	if t, _ := normalized["type"].(string); t == "ignore" {
+		return
+	}
+
 	if instanceJID != "" {
 		normalized["instanceJID"] = instanceJID
 	}
@@ -356,6 +362,37 @@ func (h *EventHandler) normalizeEvent(ctx context.Context, instanceID string, cl
 		if !evt.LastSeen.IsZero() {
 			result["lastSeen"] = evt.LastSeen
 		}
+	case *events.UndecryptableMessage:
+		// Mensagem recebida que o WhatsApp não conseguiu descriptografar
+		// (sessão Signal dessincronizada, comum após repareamento). O conteúdo
+		// nunca chega; emitimos um marcador para o backend registrar na conversa
+		// em vez de o inbound sumir silenciosamente. O whatsmeow já pediu reenvio.
+		if evt.Info.IsFromMe || evt.Info.IsGroup {
+			result["type"] = "ignore"
+			break
+		}
+		result["type"] = "message"
+		result["undecryptable"] = true
+		result["messageType"] = "unsupported"
+
+		senderJID := evt.Info.Sender.String()
+		if strings.Contains(senderJID, "@lid") && !evt.Info.SenderAlt.IsEmpty() {
+			senderJID = evt.Info.SenderAlt.String()
+		}
+		result["from"] = senderJID
+
+		chatJID := evt.Info.Chat.String()
+		if strings.Contains(chatJID, "@lid") && !evt.Info.SenderAlt.IsEmpty() && strings.Contains(evt.Info.SenderAlt.String(), "@s.whatsapp.net") {
+			chatJID = evt.Info.SenderAlt.String()
+		}
+		result["chatJID"] = chatJID
+		result["to"] = chatJID
+		result["isFromMe"] = false
+		result["isGroup"] = false
+		result["messageId"] = evt.Info.ID
+		result["timestamp"] = evt.Info.Timestamp
+		result["pushName"] = evt.Info.PushName
+		result["text"] = "Mensagem indisponível"
 	case *events.Connected:
 		result["type"] = "connected"
 	case *events.Disconnected:
