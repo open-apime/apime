@@ -4,6 +4,8 @@ go 1.25.0
 
 require (
 	github.com/caarlos0/env/v10 v10.0.0
+	github.com/getsentry/sentry-go v0.47.0
+	github.com/getsentry/sentry-go/gin v0.47.0
 	github.com/gin-contrib/cors v1.7.7
 	github.com/gin-gonic/gin v1.12.0
 	github.com/golang-jwt/jwt/v5 v5.3.1
@@ -30,8 +32,6 @@ require (
 	github.com/coder/websocket v1.8.15 // indirect
 	github.com/elliotchance/orderedmap/v3 v3.1.0 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.12 // indirect
-	github.com/getsentry/sentry-go v0.47.0 // indirect
-	github.com/getsentry/sentry-go/gin v0.47.0 // indirect
 	github.com/gin-contrib/sse v1.1.0 // indirect
 	github.com/go-playground/locales v0.14.1 // indirect
 	github.com/go-playground/universal-translator v0.18.1 // indirect
@@ -94,4 +94,4 @@ exclude (
 	github.com/gin-gonic/gin v1.11.0
 )
 
-replace go.mau.fi/whatsmeow => github.com/Whalabs/whatsmeow v0.0.0-20260616203758-f8d1b960b539
+replace go.mau.fi/whatsmeow => github.com/Whalabs/whatsmeow v0.0.0-20260622204037-cb3b013768bb
