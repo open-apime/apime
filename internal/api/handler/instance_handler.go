@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -494,6 +495,19 @@ func (h *InstanceHandler) getProfilePicture(c *gin.Context) {
 	// quando a instância reconectar. Evita poluir o Sentry com 5xx.
 	if errors.Is(err, whatsmeow.ErrNotConnected) || errors.Is(err, whatsmeow.ErrNotLoggedIn) ||
 		errors.Is(err, whatsmeow.ErrClientIsNil) || errors.Is(err, whatsmeow.ErrIQTimedOut) {
+		response.Success(c, http.StatusOK, nil)
+		return
+	}
+	// Erros transitórios/de protocolo do lado do WhatsApp também não são falha
+	// nossa: rate limit, indisponibilidade temporária, foto bloqueada (forbidden),
+	// recurso removido (gone), resposta incompleta da Meta (ElementMissing) ou
+	// request cancelado/expirado pelo consumidor. A foto é best-effort — respondemos
+	// 200 null e o consumidor re-busca. Evita poluir o Sentry com 5xx.
+	var elementMissing *whatsmeow.ElementMissingError
+	if errors.Is(err, whatsmeow.ErrIQRateOverLimit) || errors.Is(err, whatsmeow.ErrIQServiceUnavailable) ||
+		errors.Is(err, whatsmeow.ErrIQForbidden) || errors.Is(err, whatsmeow.ErrIQGone) ||
+		errors.As(err, &elementMissing) ||
+		errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		response.Success(c, http.StatusOK, nil)
 		return
 	}
