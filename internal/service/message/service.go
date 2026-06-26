@@ -737,12 +737,22 @@ func (s *Service) Send(ctx context.Context, input SendInput) (model.Message, err
 		// que o número não existe no WhatsApp — só o IsOnWhatsApp prova isso.
 		// Persistir negativo aqui envenena o cache do banco e bloqueia reenvios
 		// legítimos até o TTL expirar. Só grava negativo em erro não-transitório.
+		//
+		// Importante: uma falha de SendMessage (ban temporário 463, identidade não
+		// confiável, sessão de cripto ausente, qualquer "server returned error") também
+		// NÃO prova inexistência do número — o JID já foi resolvido por IsOnWhatsApp/cache
+		// positivo antes de chegar aqui. Tratamos esses casos como transitórios para não
+		// envenenar o cache negativo.
 		errMsg := err.Error()
 		isTransientErr := isDisconnectedErr ||
 			strings.Contains(errMsg, "connection") ||
 			strings.Contains(errMsg, "not connected") ||
 			strings.Contains(errMsg, "websocket") ||
-			strings.Contains(errMsg, "timeout")
+			strings.Contains(errMsg, "timeout") ||
+			strings.Contains(errMsg, "error 463") ||
+			strings.Contains(errMsg, "server returned error") ||
+			strings.Contains(errMsg, "untrusted identity") ||
+			strings.Contains(errMsg, "no signal session")
 
 		if !isTransientErr {
 			if s.contactRepo != nil {
