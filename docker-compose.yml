@@ -5,7 +5,7 @@ services:
     command: sh -c "./migrate -with-seeds && ./api"
     env_file: .env
     ports:
-      - "8081:8081"
+      - "8080:8080"
     volumes:
       - apime_data:/app/data
     restart: unless-stopped
