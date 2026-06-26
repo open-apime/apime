@@ -511,6 +511,14 @@ func (h *InstanceHandler) getProfilePicture(c *gin.Context) {
 		response.Success(c, http.StatusOK, nil)
 		return
 	}
+	// bad-request (400) significa que o JID consultado é inválido/inexistente do
+	// ponto de vista do servidor WhatsApp (ex.: número malformado, JID sintético).
+	// É erro de entrada do chamador, não falha do servidor: respondemos 400 com a
+	// mensagem, em vez de 500. O ideal é o chamador parar de consultar JIDs inválidos.
+	if errors.Is(err, whatsmeow.ErrIQBadRequest) {
+		response.Error(c, http.StatusBadRequest, fmt.Errorf("JID inválido para consulta de foto: %s", jidStr))
+		return
+	}
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
 		return
