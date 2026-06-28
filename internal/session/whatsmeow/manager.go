@@ -195,6 +195,20 @@ func (m *Manager) CacheOutgoingMessage(id string, msg *waE2E.Message) {
 }
 
 func NewManager(log *zap.Logger, encKey, storageDriver, baseDir, pgConnString string, instanceRepo storage.InstanceRepository, historySyncRepo storage.HistorySyncRepository, messageRepo storage.MessageRepository, eventLogRepo storage.EventLogRepository) *Manager {
+	// Limita o history sync ao RECENTE (~3 dias). Sem limite (default), o celular tenta preparar
+	// o histórico INTEIRO no pareamento, travando o QR "infinitamente". Pedindo só o recente, o
+	// sync fica pequeno e rápido (libera o QR na hora) e roda em segundo plano — e mesmo assim
+	// entrega o NctSalt + privacy tokens (necessários para o tctoken/cstoken que evita o erro 463)
+	// e as mensagens/contatos recentes para servir via webhook.
+	if store.DeviceProps.HistorySyncConfig != nil {
+		store.DeviceProps.HistorySyncConfig.FullSyncDaysLimit = proto.Uint32(3)
+		store.DeviceProps.HistorySyncConfig.FullSyncSizeMbLimit = proto.Uint32(20)
+		store.DeviceProps.HistorySyncConfig.RecentSyncDaysLimit = proto.Uint32(3)
+		store.DeviceProps.HistorySyncConfig.InitialSyncMaxMessagesPerChat = proto.Uint32(50)
+		store.DeviceProps.HistorySyncConfig.StorageQuotaMb = proto.Uint32(512)
+		log.Info("HistorySyncConfig limitado ao recente (~3 dias) — pareamento rápido + sync leve em background")
+	}
+
 	var sharedContainer *sqlstore.Container
 
 	if storageDriver != "postgres" {
@@ -424,7 +438,7 @@ func (m *Manager) createSession(ctx context.Context, instanceID string, forceRec
 
 	client := whatsmeow.NewClient(deviceStore, clientLog)
 	client.EnableAutoReconnect = true
-	client.ManualHistorySyncDownload = true
+	client.ManualHistorySyncDownload = false // baixa o history (recente/limitado) em background → entrega NctSalt + tokens (fix 463) e msgs recentes
 	client.AutomaticMessageRerequestFromPhone = true
 
 	client.GetMessageForRetry = m.getMessageForRetryCallback(instanceID)
@@ -780,7 +794,7 @@ func (m *Manager) RestoreSession(ctx context.Context, instanceID string, encrypt
 
 	client := whatsmeow.NewClient(deviceStore, clientLog)
 	client.EnableAutoReconnect = true
-	client.ManualHistorySyncDownload = true
+	client.ManualHistorySyncDownload = false // baixa o history (recente/limitado) em background → entrega NctSalt + tokens (fix 463) e msgs recentes
 	client.AutomaticMessageRerequestFromPhone = true
 	client.GetMessageForRetry = m.getMessageForRetryCallback(instanceID)
 

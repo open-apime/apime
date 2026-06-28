@@ -38,6 +38,7 @@ type Service struct {
 	contactRepo  storage.ContactRepository
 	eventLogRepo storage.EventLogRepository
 	queue        queue.Queue
+	webhookQueue queue.Queue
 	cfg          config.WhatsAppConfig
 	log          *zap.Logger
 }
@@ -60,7 +61,7 @@ func NewService(repo storage.MessageRepository, q queue.Queue, cfg config.WhatsA
 	}
 }
 
-func NewServiceWithSession(repo storage.MessageRepository, sessionMgr SessionManager, instanceRepo storage.InstanceRepository, contactRepo storage.ContactRepository, eventLogRepo storage.EventLogRepository, q queue.Queue, cfg config.WhatsAppConfig, log *zap.Logger) *Service {
+func NewServiceWithSession(repo storage.MessageRepository, sessionMgr SessionManager, instanceRepo storage.InstanceRepository, contactRepo storage.ContactRepository, eventLogRepo storage.EventLogRepository, q queue.Queue, webhookQueue queue.Queue, cfg config.WhatsAppConfig, log *zap.Logger) *Service {
 	return &Service{
 		repo:         repo,
 		sessionMgr:   sessionMgr,
@@ -68,6 +69,7 @@ func NewServiceWithSession(repo storage.MessageRepository, sessionMgr SessionMan
 		contactRepo:  contactRepo,
 		eventLogRepo: eventLogRepo,
 		queue:        q,
+		webhookQueue: webhookQueue,
 		cfg:          cfg,
 		log:          log,
 	}
@@ -318,8 +320,13 @@ func (s *Service) Send(ctx context.Context, input SendInput) (model.Message, err
 
 		// 5. Content-based dynamic delay
 		presenceDelay := calculatePresenceDelay(input)
-		if err == nil && !hasSession {
-			s.log.Info("Nova sessão detectada...",
+		// "Nova conversa" só quando NÃO há sessão de cripto E NÃO houve inbound rastreado.
+		// hasSession sozinho é heurístico (checa o device 0 via ToNonAD, não o device real do
+		// contato — ex.: :80 em contatos LID), então dispara falso-positivo de "nova sessão"
+		// em conversas ativas. Se o contato acabou de nos mandar mensagem (markMsgID != ""),
+		// é uma resposta a conversa aberta — não inicia nada novo nem adiciona delay extra.
+		if err == nil && !hasSession && markMsgID == "" {
+			s.log.Info("Nova conversa detectada (sem sessão e sem inbound recente)...",
 				zap.String("instance_id", input.InstanceID),
 				zap.String("to", toJID.String()))
 			presenceDelay += time.Duration(1500+rand.Intn(1000)) * time.Millisecond
@@ -697,6 +704,27 @@ func (s *Service) Send(ctx context.Context, input SendInput) (model.Message, err
 					})
 				}()
 			}
+			// Empurra o evento como webhook para o consumidor (acloud/Bravo/Doar) refletir a
+			// restrição no status da conexão de forma proativa — espelhando o padrão Meta-ban —
+			// sem depender de o consumidor inspecionar o erro síncrono do envio.
+			if s.webhookQueue != nil {
+				evt := queue.Event{
+					ID:         uuid.NewString(),
+					InstanceID: input.InstanceID,
+					Type:       "temporary_ban",
+					Payload: map[string]interface{}{
+					"type":   "temporary_ban",
+					"reason": "server returned error 463",
+					"detail": "Conta possivelmente restrita ou banida pelo WhatsApp",
+					"to":     toJID.String(),
+					"code":   463,
+				},
+					CreatedAt: time.Now(),
+				}
+				if enqErr := s.webhookQueue.Enqueue(ctx, evt); enqErr != nil {
+					s.log.Warn("falha ao enfileirar webhook temporary_ban", zap.Error(enqErr))
+				}
+			}
 			break
 		}
 
@@ -727,9 +755,6 @@ func (s *Service) Send(ctx context.Context, input SendInput) (model.Message, err
 	_ = client.SendChatPresence(ctx, toJID, types.ChatPresencePaused, presenceMediaType(input.Type))
 
 	if err != nil {
-		jidCache.Delete(input.To)
-		s.log.Info("Removido do cache de JID devido a erro de envio", zap.String("phone", input.To))
-
 		isDisconnectedErr := strings.Contains(err.Error(), "not logged in") ||
 			strings.Contains(err.Error(), "device JID")
 
@@ -754,7 +779,13 @@ func (s *Service) Send(ctx context.Context, input SendInput) (model.Message, err
 			strings.Contains(errMsg, "untrusted identity") ||
 			strings.Contains(errMsg, "no signal session")
 
+		// Só remove o JID do cache em memória quando o erro NÃO é transitório. Em erro
+		// transitório (463, socket, sessão), limpar o cache forçaria o próximo envio a
+		// refazer IsOnWhatsApp (query de descoberta) para um contato já conhecido — pegada
+		// de "prospecção" que agrava a heurística anti-spam. Mantemos o positivo aquecido.
 		if !isTransientErr {
+			jidCache.Delete(input.To)
+			s.log.Info("Removido do cache de JID devido a erro não-transitório de envio", zap.String("phone", input.To))
 			if s.contactRepo != nil {
 				_ = s.contactRepo.Upsert(ctx, model.Contact{
 					Phone: input.To,

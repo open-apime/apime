@@ -122,7 +122,7 @@ func main() {
 	mediaHandler := handler.NewMediaHandler(mediaStorage)
 
 	logr.Debug("inicializando serviço de mensagens")
-	messageService := message.NewServiceWithSession(repos.Message, sessionManager, repos.Instance, repos.Contact, repos.EventLog, repos.OutboxQueue, cfg.WhatsApp, logr)
+	messageService := message.NewServiceWithSession(repos.Message, sessionManager, repos.Instance, repos.Contact, repos.EventLog, repos.OutboxQueue, repos.WebhookQueue, cfg.WhatsApp, logr)
 
 	logr.Info("inicializando sistema de webhooks")
 	instanceWebhookChecker := &instanceCheckerAdapter{repo: repos.Instance}
