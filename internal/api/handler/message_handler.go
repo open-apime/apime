@@ -83,6 +83,7 @@ type sendTextRequest struct {
 	Text              string   `json:"text" binding:"required"`
 	Quoted            string   `json:"quoted"`
 	QuotedParticipant string   `json:"quotedParticipant"`
+	QuotedText        string   `json:"quotedText"`
 	MentionedJids     []string `json:"mentionedJids"`
 	MarkReadMessageID string   `json:"markReadMessageId"`
 	MarkReadSender    string   `json:"markReadSender"`
@@ -114,6 +115,7 @@ func (h *MessageHandler) sendText(c *gin.Context) {
 		Text:              req.Text,
 		Quoted:            req.Quoted,
 		Participant:       req.QuotedParticipant,
+		QuotedText:        req.QuotedText,
 		MentionedJids:     req.MentionedJids,
 		MarkReadMessageID: req.MarkReadMessageID,
 		MarkReadSender:    req.MarkReadSender,
@@ -191,6 +193,7 @@ func (h *MessageHandler) sendMedia(c *gin.Context) {
 		Caption:           caption,
 		Quoted:            c.PostForm("quoted"),
 		Participant:       c.PostForm("quotedParticipant"),
+		QuotedText:        c.PostForm("quotedText"),
 		MentionedJids:     parseMentionedJids(c),
 		MarkReadMessageID: c.PostForm("markReadMessageId"),
 		MarkReadSender:    c.PostForm("markReadSender"),
@@ -272,6 +275,7 @@ func (h *MessageHandler) sendAudio(c *gin.Context) {
 		PTT:               ptt,
 		Quoted:            c.PostForm("quoted"),
 		Participant:       c.PostForm("quotedParticipant"),
+		QuotedText:        c.PostForm("quotedText"),
 		MentionedJids:     parseMentionedJids(c),
 		MarkReadMessageID: c.PostForm("markReadMessageId"),
 		MarkReadSender:    c.PostForm("markReadSender"),
@@ -350,6 +354,7 @@ func (h *MessageHandler) sendDocument(c *gin.Context) {
 		Caption:           caption,
 		Quoted:            c.PostForm("quoted"),
 		Participant:       c.PostForm("quotedParticipant"),
+		QuotedText:        c.PostForm("quotedText"),
 		MentionedJids:     parseMentionedJids(c),
 		MarkReadMessageID: c.PostForm("markReadMessageId"),
 		MarkReadSender:    c.PostForm("markReadSender"),
@@ -377,6 +382,7 @@ type sendContactRequest struct {
 	Contacts          []messageSvc.ContactEntry `json:"contacts"`
 	Quoted            string                    `json:"quoted"`
 	QuotedParticipant string                    `json:"quotedParticipant"`
+	QuotedText        string                    `json:"quotedText"`
 	MentionedJids     []string                  `json:"mentionedJids"`
 }
 
@@ -405,6 +411,7 @@ func (h *MessageHandler) sendContact(c *gin.Context) {
 		Contacts:      req.Contacts,
 		Quoted:        req.Quoted,
 		Participant:   req.QuotedParticipant,
+		QuotedText:    req.QuotedText,
 		MentionedJids: req.MentionedJids,
 	})
 	if err != nil {

@@ -137,6 +137,7 @@ type SendInput struct {
 	MessageID  string
 	Quoted        string
 	Participant   string
+	QuotedText    string
 	MentionedJids []string
 	MarkReadMessageID string
 	MarkReadSender    string
@@ -345,12 +346,25 @@ func (s *Service) Send(ctx context.Context, input SendInput) (model.Message, err
 		ctxInfo := &waE2E.ContextInfo{}
 		if quotedID != "" {
 			ctxInfo.StanzaID = proto.String(quotedID)
-		}
-		if participant != "" {
-			if !strings.Contains(participant, "@") {
-				participant = participant + "@s.whatsapp.net"
+
+			if participant != "" {
+				if !strings.Contains(participant, "@") {
+					participant = participant + "@s.whatsapp.net"
+				}
+				if pj, perr := types.ParseJID(participant); perr == nil {
+					ctxInfo.Participant = proto.String(pj.ToNonAD().String())
+				} else {
+					ctxInfo.Participant = proto.String(participant)
+				}
+			} else if toJID.Server == types.DefaultUserServer || toJID.Server == types.HiddenUserServer {
+				ctxInfo.Participant = proto.String(toJID.ToNonAD().String())
 			}
-			ctxInfo.Participant = proto.String(participant)
+
+			if input.QuotedText != "" {
+				ctxInfo.QuotedMessage = &waE2E.Message{
+					Conversation: proto.String(input.QuotedText),
+				}
+			}
 		}
 		if len(mentionedJids) > 0 {
 			normalized := make([]string, len(mentionedJids))
