@@ -453,9 +453,25 @@ func (h *EventHandler) normalizeEvent(ctx context.Context, instanceID string, cl
 	case *events.ChatPresence:
 		// Indicador "digitando…" / "gravando áudio". Emitido pelo WhatsApp quando o contato
 		// está compondo. Efêmero — o consumidor decide exibir e por quanto tempo.
+		// O Chat/Sender costuma vir como @lid; resolvemos para o número (PN) para o consumidor
+		// conseguir casar com o contato/conversa.
 		result["type"] = "chat_presence"
-		result["from"] = evt.Sender.String()
-		result["chatJID"] = evt.Chat.String()
+
+		chatJID := evt.Chat
+		if chatJID.Server == types.HiddenUserServer && client != nil && client.Store != nil && client.Store.LIDs != nil {
+			if pn, err := client.Store.LIDs.GetPNForLID(ctx, chatJID.ToNonAD()); err == nil && !pn.IsEmpty() {
+				chatJID = pn
+			}
+		}
+		senderJID := evt.Sender
+		if senderJID.Server == types.HiddenUserServer && client != nil && client.Store != nil && client.Store.LIDs != nil {
+			if pn, err := client.Store.LIDs.GetPNForLID(ctx, senderJID.ToNonAD()); err == nil && !pn.IsEmpty() {
+				senderJID = pn
+			}
+		}
+
+		result["from"] = senderJID.String()
+		result["chatJID"] = chatJID.String()
 		result["state"] = string(evt.State) // "composing" | "paused"
 		if evt.Media != "" {
 			result["media"] = string(evt.Media) // "" (texto) | "audio"
