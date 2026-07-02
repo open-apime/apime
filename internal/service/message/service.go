@@ -246,6 +246,9 @@ func (s *Service) Send(ctx context.Context, input SendInput) (model.Message, err
 		return model.Message{}, fmt.Errorf("falha ao resolver destinatário %s: %w", input.To, err)
 	}
 
+	// Garante o destinatário na lista de contatos da conta antes de enviar (best-effort, não bloqueia).
+	s.autoSaveContact(ctx, input.InstanceID, client, toJID, input.DisplayName)
+
 	if toJID.Server == types.DefaultUserServer || toJID.Server == types.HiddenUserServer {
 		hasSession, err := s.sessionMgr.HasSession(input.InstanceID, toJID)
 
