@@ -43,6 +43,7 @@ func (h *WhatsAppHandler) Register(r *gin.RouterGroup) {
 	r.POST("/instances/:id/whatsapp/messages/edit", h.editMessage)
 	r.POST("/instances/:id/whatsapp/messages/react", h.sendReaction)
 	r.GET("/instances/:id/whatsapp/contacts", h.listContacts)
+	r.POST("/instances/:id/whatsapp/contacts/save", h.saveContact)
 	r.GET("/instances/:id/whatsapp/contacts/:jid", h.getContact)
 	r.GET("/instances/:id/whatsapp/userinfo/:jid", h.getUserInfo)
 	r.GET("/instances/:id/whatsapp/privacy", h.getPrivacySettings)
