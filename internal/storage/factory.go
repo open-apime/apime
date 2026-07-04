@@ -42,7 +42,7 @@ func NewRepositories(cfg config.Config, log *zap.Logger) (*Repositories, error) 
 		err          error
 	)
 
-	// Inicializa Redis apenas se explicitamente habilitado
+	// Initialize Redis only when explicitly enabled
 	useRedis := cfg.Redis.Enabled
 
 	if useRedis {

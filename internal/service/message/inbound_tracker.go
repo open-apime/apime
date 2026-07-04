@@ -9,12 +9,12 @@ import (
 
 const inboundTTL = 14 * 24 * time.Hour // 14 days
 
-// normalizeChatKey normaliza o chatJID para a forma sem device (ToNonAD) antes de
-// montar a chave do tracker. Necessário porque contatos endereçados via LID têm o
-// Chat resolvido com sufixo de device (ex.: "554899827309:80@s.whatsapp.net"), enquanto
-// o envio busca o JID sem device (ToNonAD). Sem isso, store e lookup nunca batem e o
-// auto-markread (ticks azuis) nunca dispara para contatos LID. ParseJID lida com
-// s.whatsapp.net/lid/g.us/broadcast; em caso de erro, mantém a string original.
+// normalizeChatKey normalizes the chatJID to its device-less form (ToNonAD) before
+// building the tracker key. Needed because contacts addressed via LID have their Chat
+// resolved with a device suffix (e.g. "554899827309:80@s.whatsapp.net"), while sending
+// looks up the device-less JID (ToNonAD). Without this, store and lookup never match and
+// auto-markread (blue ticks) never fires for LID contacts. ParseJID handles
+// s.whatsapp.net/lid/g.us/broadcast; on error, it keeps the original string.
 func normalizeChatKey(chatJID string) string {
 	jid, err := types.ParseJID(chatJID)
 	if err != nil {
@@ -63,9 +63,10 @@ func popLastInbound(instanceID, chatJID string) (inboundEntry, bool) {
 	return entry, true
 }
 
-// hasRecentInbound informa se há um inbound rastreado e válido para o chat, SEM removê-lo
-// (diferente de popLastInbound). Serve como prova de "conversa já aberta": se o contato nos
-// mandou mensagem recentemente, o envio é uma resposta — não uma nova conversa.
+// hasRecentInbound reports whether there is a tracked, still-valid inbound for the chat,
+// WITHOUT removing it (unlike popLastInbound). It serves as proof of an "already open
+// conversation": if the contact messaged us recently, an outgoing message is a reply, not
+// a new conversation.
 func hasRecentInbound(instanceID, chatJID string) bool {
 	key := instanceID + ":" + normalizeChatKey(chatJID)
 	val, ok := inboundTracker.Load(key)

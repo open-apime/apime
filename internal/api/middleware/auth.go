@@ -13,7 +13,7 @@ import (
 	"github.com/open-apime/apime/internal/storage"
 )
 
-// AuthOption configura o middleware de autenticação.
+// AuthOption configures the authentication middleware.
 type AuthOption struct {
 	JWTSecret       string
 	APITokenService *apiTokenSvc.Service

@@ -1,9 +1,9 @@
-// Package sentryx é um wrapper fino sobre github.com/getsentry/sentry-go que
-// concentra inicialização, no-op silencioso quando SENTRY_DSN não está setado,
-// captura de erros do whatsmeow (via zap hook) e middleware do Gin.
+// Package sentryx is a thin wrapper over github.com/getsentry/sentry-go that
+// centralizes initialization, silent no-op when SENTRY_DSN is not set, capture
+// of whatsmeow errors (via zap hook) and the Gin middleware.
 //
-// Sem DSN configurado, todas as funções viram no-op — não há overhead e nenhuma
-// chamada de rede é feita.
+// Without a configured DSN, all functions become no-ops — there is no overhead
+// and no network call is made.
 package sentryx
 
 import (
@@ -13,8 +13,8 @@ import (
 	"github.com/getsentry/sentry-go"
 )
 
-// Config é o subset que consumimos do internal/config.SentryConfig — duplicado
-// como struct simples para não criar import cycle.
+// Config is the subset we consume from internal/config.SentryConfig — duplicated
+// as a plain struct to avoid an import cycle.
 type Config struct {
 	DSN              string
 	Environment      string
@@ -26,12 +26,12 @@ type Config struct {
 
 var enabled bool
 
-// IsEnabled reporta se o Sentry foi inicializado com DSN válido.
+// IsEnabled reports whether Sentry was initialized with a valid DSN.
 func IsEnabled() bool { return enabled }
 
-// Init inicializa o Sentry quando há DSN configurado. Sem DSN é no-op
-// silencioso. Erros de init são apenas reportados pelo caller (log) — não
-// derrubam o processo.
+// Init initializes Sentry when a DSN is configured. Without a DSN it is a silent
+// no-op. Init errors are only reported by the caller (log) — they do not bring
+// down the process.
 func Init(cfg Config) error {
 	if cfg.DSN == "" {
 		enabled = false
@@ -58,7 +58,7 @@ func Init(cfg Config) error {
 	return nil
 }
 
-// Flush bloqueia até pendências serem enviadas ou o timeout estourar.
+// Flush blocks until pending events are sent or the timeout elapses.
 func Flush(timeout time.Duration) {
 	if !enabled {
 		return
@@ -66,7 +66,7 @@ func Flush(timeout time.Duration) {
 	sentry.Flush(timeout)
 }
 
-// CaptureError envia um erro com tags opcionais.
+// CaptureError sends an error with optional tags.
 func CaptureError(err error, tags map[string]string) {
 	if !enabled || err == nil {
 		return
@@ -80,7 +80,7 @@ func CaptureError(err error, tags map[string]string) {
 	})
 }
 
-// CaptureMessage envia uma mensagem com level.
+// CaptureMessage sends a message with a level.
 func CaptureMessage(msg string, level sentry.Level, tags map[string]string) {
 	if !enabled || msg == "" {
 		return
@@ -95,8 +95,8 @@ func CaptureMessage(msg string, level sentry.Level, tags map[string]string) {
 	})
 }
 
-// Recover deve ser chamado via defer em goroutines críticas para reportar
-// panics ao Sentry e re-lançar para preservar o comportamento original.
+// Recover must be called via defer in critical goroutines to report panics to
+// Sentry and re-throw them to preserve the original behavior.
 func Recover() {
 	if r := recover(); r != nil {
 		if enabled {
@@ -107,7 +107,7 @@ func Recover() {
 	}
 }
 
-// RecoverWithContext igual a Recover, com escopo derivado de ctx.
+// RecoverWithContext is like Recover, with scope derived from ctx.
 func RecoverWithContext(ctx context.Context) {
 	if r := recover(); r != nil {
 		if enabled {

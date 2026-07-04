@@ -144,7 +144,7 @@ func (r *messageRepo) GetByWhatsAppID(ctx context.Context, whatsappID string) (m
 
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return model.Message{}, err // Retorna o erro nativo para evitar import cycle
+			return model.Message{}, err // Return the native error to avoid an import cycle
 		}
 		return model.Message{}, err
 	}

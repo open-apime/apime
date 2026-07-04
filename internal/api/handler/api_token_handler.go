@@ -65,13 +65,12 @@ func (h *APITokenHandler) create(c *gin.Context) {
 	response.Success(c, http.StatusCreated, gin.H{
 		"id":        token.ID,
 		"name":      token.Name,
-		"token":     plainToken, // Retornar apenas na criação
+		"token":     plainToken, // returned only on creation
 		"createdAt": token.CreatedAt,
 	})
 }
 
 func (h *APITokenHandler) list(c *gin.Context) {
-	// Obter userID do contexto de autenticação
 	userID := c.GetString("userID")
 	if userID == "" {
 		response.ErrorWithMessage(c, http.StatusUnauthorized, "usuário não autenticado")

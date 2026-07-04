@@ -17,7 +17,6 @@ type DB struct {
 }
 
 func New(dataDir string, log *zap.Logger) (*DB, error) {
-	// Garantir que o diretório existe
 	if err := os.MkdirAll(dataDir, 0755); err != nil {
 		return nil, fmt.Errorf("sqlite: criar diretório: %w", err)
 	}
@@ -30,8 +29,7 @@ func New(dataDir string, log *zap.Logger) (*DB, error) {
 		return nil, fmt.Errorf("sqlite: falha ao abrir: %w", err)
 	}
 
-	// Configurar pool de conexões
-	db.SetMaxOpenConns(1) // SQLite não suporta múltiplas escritas simultâneas
+	db.SetMaxOpenConns(1) // SQLite does not support concurrent writes
 	db.SetMaxIdleConns(1)
 
 	if err := db.PingContext(context.Background()); err != nil {

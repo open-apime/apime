@@ -45,7 +45,7 @@ type DatabaseConfig struct {
 	SSLMode  string `env:"DB_SSLMODE" envDefault:"disable"`
 }
 
-// DSN retorna a string de conexão em formato aceito pelo pgxpool.
+// DSN returns the connection string in a format accepted by pgxpool.
 func (cfg DatabaseConfig) DSN() string {
 	if cfg.URL != "" {
 		return cfg.URL
@@ -87,10 +87,10 @@ type LogConfig struct {
 }
 
 type WhatsAppConfig struct {
-	SessionKeyEnc            string `env:"WHATSAPP_SESSION_KEY_ENC" envDefault:"apime-session-key-change-in-production"`
-	JIDCachePositiveTTLHours    int `env:"WHATSAPP_JID_CACHE_POSITIVE_TTL_HOURS" envDefault:"24"`
-	JIDCacheNegativeTTLDays     int `env:"WHATSAPP_JID_CACHE_NEGATIVE_TTL_DAYS" envDefault:"1"`
-	JIDCachePositiveDBTTLDays   int `env:"WHATSAPP_JID_CACHE_POSITIVE_DB_TTL_DAYS" envDefault:"15"`
+	SessionKeyEnc             string `env:"WHATSAPP_SESSION_KEY_ENC" envDefault:"apime-session-key-change-in-production"`
+	JIDCachePositiveTTLHours  int    `env:"WHATSAPP_JID_CACHE_POSITIVE_TTL_HOURS" envDefault:"24"`
+	JIDCacheNegativeTTLDays   int    `env:"WHATSAPP_JID_CACHE_NEGATIVE_TTL_DAYS" envDefault:"1"`
+	JIDCachePositiveDBTTLDays int    `env:"WHATSAPP_JID_CACHE_POSITIVE_DB_TTL_DAYS" envDefault:"15"`
 }
 
 type WebhookConfig struct {
@@ -102,7 +102,7 @@ type DashboardConfig struct {
 	Timezone string `env:"DASHBOARD_TIMEZONE" envDefault:""`
 }
 
-// SentryConfig — sem DSN, integração fica desligada (no-op).
+// SentryConfig — without a DSN, the integration stays disabled (no-op).
 type SentryConfig struct {
 	DSN              string  `env:"SENTRY_DSN" envDefault:""`
 	Environment      string  `env:"SENTRY_ENVIRONMENT" envDefault:""`
@@ -112,11 +112,11 @@ type SentryConfig struct {
 	TracesSampleRate float64 `env:"SENTRY_TRACES_SAMPLE_RATE" envDefault:"0.0"`
 }
 
-// Load carrega as configurações da aplicação.
+// Load loads the application configuration.
 func Load() Config {
 	cfg := Config{}
 	if err := env.Parse(&cfg); err != nil {
-		log.Fatalf("config: não foi possível carregar variáveis: %v", err)
+		log.Fatalf("config: could not load variables: %v", err)
 	}
 	return cfg
 }

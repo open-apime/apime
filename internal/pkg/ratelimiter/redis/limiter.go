@@ -48,10 +48,9 @@ func (l *RedisLimiter) Allow(ctx context.Context, key string, limit int, window 
 		remaining = 0
 	}
 
-	// Calculate reset time
 	resetAfter := time.Duration(ttlMs) * time.Millisecond
 	if ttlMs < 0 {
-		resetAfter = window // Fallback
+		resetAfter = window
 	}
 
 	reset := time.Now().Add(resetAfter)

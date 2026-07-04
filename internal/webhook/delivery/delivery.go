@@ -44,7 +44,6 @@ func (d *Delivery) Deliver(ctx context.Context, url string, secret string, event
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", "ApiMe/1.0")
 
-	// Adicionar assinatura HMAC se secret estiver configurado
 	if secret != "" {
 		signature := d.generateSignature(payload, secret)
 		req.Header.Set("X-ApiMe-Signature", signature)

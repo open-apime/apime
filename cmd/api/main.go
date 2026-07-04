@@ -204,17 +204,17 @@ func main() {
 
 	if cfg.Dashboard.Enabled {
 		dashboard.Register(router, dashboard.Options{
-			AuthService:         authService,
-			InstanceService:     instanceService,
-			UserService:         userService,
-			APITokenService:     apiTokenService,
-			SessionManager:      sessionManager,
-			JWTSecret:           cfg.JWT.Secret,
-			DocsDirectory:       ".",
-			BaseURL:             cfg.App.BaseURL,
-			Logger:              logr,
-			EnableDashboard:     true,
-			Timezone:            cfg.Dashboard.Timezone,
+			AuthService:     authService,
+			InstanceService: instanceService,
+			UserService:     userService,
+			APITokenService: apiTokenService,
+			SessionManager:  sessionManager,
+			JWTSecret:       cfg.JWT.Secret,
+			DocsDirectory:   ".",
+			BaseURL:         cfg.App.BaseURL,
+			Logger:          logr,
+			EnableDashboard: true,
+			Timezone:        cfg.Dashboard.Timezone,
 		})
 	} else {
 		logr.Info("dashboard desativado via configuração")

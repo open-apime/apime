@@ -15,7 +15,6 @@ func NewHealthHandler() *HealthHandler {
 }
 
 func (h *HealthHandler) Register(r *gin.RouterGroup) {
-	// Root endpoint with version info
 	r.Match([]string{"GET", "HEAD"}, "/", func(c *gin.Context) {
 		if c.Request.Method == http.MethodHead {
 			c.Status(http.StatusOK)
@@ -28,7 +27,6 @@ func (h *HealthHandler) Register(r *gin.RouterGroup) {
 		})
 	})
 
-	// Health check endpoint
 	r.Match([]string{"GET", "HEAD"}, "/healthz", func(c *gin.Context) {
 		if c.Request.Method == http.MethodHead {
 			c.Status(http.StatusOK)

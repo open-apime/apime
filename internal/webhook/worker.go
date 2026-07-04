@@ -54,12 +54,11 @@ func (w *Worker) processNext(ctx context.Context) {
 	}
 
 	if event == nil {
-		return // Timeout, sem eventos
+		return
 	}
 
 	w.log.Info("webhook worker: processando evento", zap.String("id", event.ID))
 
-	// Obter instância para determinar webhook
 	inst, err := w.instanceRepo.GetByID(ctx, event.InstanceID)
 	if err != nil {
 		w.log.Error("webhook worker: instância não encontrada", zap.Error(err))
@@ -71,7 +70,6 @@ func (w *Worker) processNext(ctx context.Context) {
 		return
 	}
 
-	// Preparar payload do evento
 	payload := map[string]interface{}{
 		"id":         event.ID,
 		"instanceId": event.InstanceID,
@@ -80,7 +78,6 @@ func (w *Worker) processNext(ctx context.Context) {
 		"createdAt":  event.CreatedAt,
 	}
 
-	// Entregar webhook
 	if err := w.delivery.Deliver(ctx, inst.WebhookURL, inst.WebhookSecret, payload); err != nil {
 		w.log.Error("webhook worker: falha na entrega", zap.Error(err))
 		return

@@ -80,7 +80,7 @@ func (r *eventLogRepo) ListByInstance(ctx context.Context, instanceID string) ([
 			return nil, err
 		}
 
-			var payloadMap interface{}
+		var payloadMap interface{}
 		if err := json.Unmarshal([]byte(payloadStr), &payloadMap); err == nil {
 			if str, ok := payloadMap.(string); ok {
 				eventLog.Payload = str

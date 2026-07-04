@@ -40,7 +40,7 @@ func (q *RedisQueue) Dequeue(ctx context.Context, timeout time.Duration) (*queue
 	result, err := q.client.BRPop(ctx, timeout, q.key).Result()
 	if err != nil {
 		if err == redis.Nil {
-			return nil, nil // Timeout
+			return nil, nil
 		}
 		return nil, fmt.Errorf("queue dequeue: %w", err)
 	}

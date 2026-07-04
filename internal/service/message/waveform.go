@@ -26,12 +26,12 @@ func generatePTTWaveform(seconds int) []byte {
 		segments[i] = segment{
 			center:    basePos*float64(size) + float64(rand.Intn(6)-3),
 			width:     float64(4 + rand.Intn(10)),
-			intensity: 30.0 + float64(rand.Intn(70)), // 30-100
+			intensity: 30.0 + float64(rand.Intn(70)),
 		}
 	}
 
 	mainPeak := rand.Intn(numSegments)
-	segments[mainPeak].intensity = 70.0 + float64(rand.Intn(50)) // 70-120
+	segments[mainPeak].intensity = 70.0 + float64(rand.Intn(50))
 	segments[mainPeak].width = float64(6 + rand.Intn(12))
 
 	for i := 0; i < size; i++ {

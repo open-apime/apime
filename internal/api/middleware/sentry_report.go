@@ -9,9 +9,9 @@ import (
 	"github.com/open-apime/apime/internal/pkg/sentryx"
 )
 
-// SentryReport reporta ao Sentry quaisquer erros acumulados via c.Error() e
-// respostas 5xx, com tags da rota e do request-id. Roda só quando o Sentry
-// estiver habilitado (registro condicional no router).
+// SentryReport reports to Sentry any errors accumulated via c.Error() and any
+// 5xx responses, tagged with the route and request-id. It only runs when Sentry
+// is enabled (conditional registration in the router).
 func SentryReport() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.Next()

@@ -56,22 +56,22 @@ func (h *WhatsAppHandler) getContact(c *gin.Context) {
 		return
 	}
 
-	// Resolução LID → PN: tenta mapear JID oculto para o número real
-	// antes de buscar o contato. O mapping é populado automaticamente
-	// pelo whatsmeow (SenderAlt/RecipientAlt e GetUserInfo).
+	// LID → PN resolution: map the hidden JID to the real phone number
+	// before fetching the contact. The mapping is populated automatically
+	// by whatsmeow (SenderAlt/RecipientAlt and GetUserInfo).
 	var inputJID *types.JID
 	if jid.Server == types.HiddenUserServer {
 		copy := jid
 		inputJID = &copy
 
-		// 1. Lookup local (rápido, sem rede)
+		// 1. Local lookup (fast, no network)
 		if client.Store != nil && client.Store.LIDs != nil {
 			if pn, err := client.Store.LIDs.GetPNForLID(c.Request.Context(), jid); err == nil && !pn.IsEmpty() {
 				jid = pn.ToNonAD()
 			}
 		}
 
-		// 2. Se ainda é LID, força população via rede e tenta de novo
+		// 2. If still a LID, force population over the network and retry
 		if jid.Server == types.HiddenUserServer {
 			if infoMap, err := client.GetUserInfo(c.Request.Context(), []types.JID{jid}); err == nil {
 				if info, ok := infoMap[jid]; ok && !info.LID.IsEmpty() {

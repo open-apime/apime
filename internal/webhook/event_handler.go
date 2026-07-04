@@ -50,8 +50,8 @@ func NewEventHandler(q queue.Queue, log *zap.Logger, mediaStorage *media.Storage
 	}
 }
 
-// confirmJIDFromEvent extrai o JID s.whatsapp.net do evento (resolvendo @lid via Alt)
-// e confirma no resolver, invalidando cache negativo e persistindo o mapeamento.
+// confirmJIDFromEvent extracts the s.whatsapp.net JID from the event (resolving @lid via Alt)
+// and confirms it in the resolver, invalidating the negative cache and persisting the mapping.
 func (h *EventHandler) confirmJIDFromEvent(ctx context.Context, evt any) {
 	if h.jidConfirmer == nil {
 		return
@@ -127,8 +127,8 @@ func (h *EventHandler) Handle(ctx context.Context, instanceID string, instanceJI
 
 	normalized := h.normalizeEvent(ctx, instanceID, client, evt)
 
-	// Eventos marcados como "ignore" não geram webhook (ex.: mensagem
-	// indescriptografável vinda de mim mesmo ou de grupo).
+	// Events marked as "ignore" don't generate a webhook (e.g. an undecryptable
+	// message coming from myself or from a group).
 	if t, _ := normalized["type"].(string); t == "ignore" {
 		return
 	}
@@ -284,8 +284,8 @@ func (h *EventHandler) normalizeEvent(ctx context.Context, instanceID string, cl
 				}
 			}
 		} else if ptv := evt.Message.GetPtvMessage(); ptv != nil {
-			// Recado de vídeo (video note redondo). No protocolo é um VideoMessage no campo
-			// ptvMessage → baixa igual a vídeo. Marcamos isPtv p/ o consumidor diferenciar na UI.
+			// Video note (round video message). In the protocol it's a VideoMessage in the
+			// ptvMessage field → downloaded like a video. We flag isPtv so the consumer can tell them apart in the UI.
 			h.log.Info("detectado vídeo em recado (PTV), iniciando processamento", zap.String("msg_id", evt.Info.ID))
 			result["mediaType"] = "video"
 			result["isPtv"] = true
@@ -364,10 +364,10 @@ func (h *EventHandler) normalizeEvent(ctx context.Context, instanceID string, cl
 			result["mentionedJids"] = mentionedJids
 		}
 
-		// Edição de mensagem no protocolo novo: chega criptografada como secretEncryptedMessage
-		// (SecretEncType=MESSAGE_EDIT), não mais como protocolMessage type 14. Decriptamos com o
-		// message secret guardado e expomos o conteúdo novo + o id da mensagem original para o
-		// consumidor aplicar a edição. Sem isso a edição some (o consumidor a trata como sync).
+		// Message edit in the new protocol: it arrives encrypted as a secretEncryptedMessage
+		// (SecretEncType=MESSAGE_EDIT), no longer as protocolMessage type 14. We decrypt it with the
+		// stored message secret and expose the new content + the original message id so the
+		// consumer can apply the edit. Without this the edit is lost (the consumer treats it as a sync).
 		if sec := evt.Message.GetSecretEncryptedMessage(); sec != nil &&
 			sec.GetSecretEncType() == waE2E.SecretEncryptedMessage_MESSAGE_EDIT {
 			if client != nil {
@@ -412,10 +412,10 @@ func (h *EventHandler) normalizeEvent(ctx context.Context, instanceID string, cl
 			result["lastSeen"] = evt.LastSeen
 		}
 	case *events.UndecryptableMessage:
-		// Mensagem recebida que o WhatsApp não conseguiu descriptografar
-		// (sessão Signal dessincronizada, comum após repareamento). O conteúdo
-		// nunca chega; emitimos um marcador para o backend registrar na conversa
-		// em vez de o inbound sumir silenciosamente. O whatsmeow já pediu reenvio.
+		// Inbound message that WhatsApp could not decrypt (desynchronized Signal
+		// session, common after re-pairing). The content never arrives; we emit a
+		// marker so the backend records it in the conversation instead of the
+		// inbound silently disappearing. whatsmeow has already requested a resend.
 		if evt.Info.IsFromMe || evt.Info.IsGroup {
 			result["type"] = "ignore"
 			break
@@ -441,9 +441,9 @@ func (h *EventHandler) normalizeEvent(ctx context.Context, instanceID string, cl
 		result["messageId"] = evt.Info.ID
 		result["timestamp"] = evt.Info.Timestamp
 		result["pushName"] = evt.Info.PushName
-		// Visualização única: o servidor entrega só um stub (a mídia não vem a dispositivos
-		// vinculados, por privacidade — igual ao WhatsApp Web "veja no celular"). Diferenciamos
-		// pelo UnavailableType para o consumidor mostrar o aviso certo em vez de "indisponível".
+		// View once: the server delivers only a stub (the media isn't sent to linked
+		// devices, for privacy — same as WhatsApp Web's "view on your phone"). We tell it
+		// apart by UnavailableType so the consumer shows the right notice instead of "unavailable".
 		if evt.UnavailableType == events.UnavailableTypeViewOnce {
 			result["unavailableType"] = "view_once"
 			result["text"] = "🔒 Mensagem de visualização única — abra no celular"
@@ -451,10 +451,10 @@ func (h *EventHandler) normalizeEvent(ctx context.Context, instanceID string, cl
 			result["text"] = "Mensagem indisponível"
 		}
 	case *events.ChatPresence:
-		// Indicador "digitando…" / "gravando áudio". Emitido pelo WhatsApp quando o contato
-		// está compondo. Efêmero — o consumidor decide exibir e por quanto tempo.
-		// O Chat/Sender costuma vir como @lid; resolvemos para o número (PN) para o consumidor
-		// conseguir casar com o contato/conversa.
+		// "Typing…" / "recording audio" indicator. Emitted by WhatsApp while the contact
+		// is composing. Ephemeral — the consumer decides whether and how long to show it.
+		// Chat/Sender usually comes as @lid; we resolve it to the phone number (PN) so the
+		// consumer can match it with the contact/conversation.
 		result["type"] = "chat_presence"
 
 		chatJID := evt.Chat
@@ -474,7 +474,7 @@ func (h *EventHandler) normalizeEvent(ctx context.Context, instanceID string, cl
 		result["chatJID"] = chatJID.String()
 		result["state"] = string(evt.State) // "composing" | "paused"
 		if evt.Media != "" {
-			result["media"] = string(evt.Media) // "" (texto) | "audio"
+			result["media"] = string(evt.Media) // "" (text) | "audio"
 		}
 	case *events.Connected:
 		result["type"] = "connected"
@@ -484,11 +484,11 @@ func (h *EventHandler) normalizeEvent(ctx context.Context, instanceID string, cl
 		result["type"] = "disconnected"
 		result["reason"] = evt.Reason.String()
 	case *events.NotifyAccountReachoutTimelock:
-		// Notificação AUTORITATIVA do servidor sobre a trava de reach-out (a causa do erro 463).
-		// É a fonte exata do estado da restrição — dispensa chutar duração (não é "sempre 7 dias"):
-		//   IsActive=true  → restrição vigente; TimeEnforcementEnds = quando expira (data exata).
-		//   IsActive=false → restrição saiu → o consumidor devolve a conexão para "conectado".
-		// Complementa o 463 síncrono do envio (message/service.go), que é só o gatilho imediato.
+		// AUTHORITATIVE server notification about the reach-out timelock (the cause of error 463).
+		// It's the exact source of the restriction state — no need to guess the duration (it's not "always 7 days"):
+		//   IsActive=true  → restriction in effect; TimeEnforcementEnds = when it expires (exact date).
+		//   IsActive=false → restriction lifted → the consumer moves the connection back to "connected".
+		// Complements the synchronous 463 from the send path (message/service.go), which is only the immediate trigger.
 		if evt.IsActive {
 			result["type"] = "temporary_ban"
 			result["reason"] = "account reachout timelock"
@@ -501,7 +501,7 @@ func (h *EventHandler) normalizeEvent(ctx context.Context, instanceID string, cl
 			result["enforcementType"] = evt.EnforcementType
 		}
 		if !evt.TimeEnforcementEnds.IsZero() {
-			// RFC3339 no JSON do webhook → o consumidor faz new Date(restrictedUntil).
+			// RFC3339 in the webhook JSON → the consumer does new Date(restrictedUntil).
 			result["restrictedUntil"] = evt.TimeEnforcementEnds.Time
 		}
 	default:

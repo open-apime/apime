@@ -13,18 +13,18 @@ import (
 	"go.uber.org/zap"
 )
 
-// autoSaveContact garante o destinatário presente na lista de contatos da conta (app state
-// critical_unblock_low) no momento do envio. O estado vive só na conta/no Store local — não é
-// espelhado para sistemas externos.
+// autoSaveContact ensures the recipient is present in the account's contact list (app state
+// critical_unblock_low) at send time. The state lives only in the account/local Store — it is not
+// mirrored to external systems.
 //
-// Fluxo (best-effort, não bloqueia o envio):
-//  1. se já há contato com nome no Store.Contacts (leitura local, sem rede) → nada a fazer;
-//  2. cache em memória por instância:jid cobre a janela entre o SendAppState e o eco do app state
-//     de volta ao Store, evitando reenvio duplicado nesse intervalo;
-//  3. throttle por instância (1/s + jitter) para não emitir mutações de app state em rajada.
+// Flow (best-effort, does not block the send):
+//  1. if a named contact already exists in Store.Contacts (local read, no network) → nothing to do;
+//  2. an in-memory instance:jid cache covers the window between SendAppState and the app state echo
+//     coming back to the Store, avoiding a duplicate resend in that interval;
+//  3. per-instance throttle (1/s + jitter) to avoid emitting app state mutations in bursts.
 
 var (
-	// saveContactSeen marca instance:jid já tratados (evita reprocessar antes do eco do app state).
+	// saveContactSeen marks instance:jid pairs already handled (avoids reprocessing before the app state echo).
 	saveContactSeen sync.Map // key "instanceID:jid" -> expiresAt (time.Time)
 
 	saveContactThrottleMu sync.Mutex
@@ -34,11 +34,12 @@ var (
 const (
 	saveContactSeenTTL      = 10 * time.Minute
 	saveContactMinInterval  = 1 * time.Second
-	autoSaveContactDisabled = "APIME_AUTO_SAVE_CONTACT" // ="false" desliga (default: ligado)
+	autoSaveContactDisabled = "APIME_AUTO_SAVE_CONTACT" // ="false" turns it off (default: on)
 )
 
-// autoSaveContact tenta salvar o contato antes do envio. displayName é o nome que o consumidor já
-// manda no envio; se vazio, cai para o PushName conhecido no store; se nem isso, não salva.
+// autoSaveContact tries to save the contact before the send. displayName is the name the consumer
+// already sends with the message; if empty, it falls back to the PushName known in the store; if
+// neither is available, it does not save.
 func (s *Service) autoSaveContact(ctx context.Context, instanceID string, client *whatsmeow.Client, toJID types.JID, displayName string) {
 	if os.Getenv(autoSaveContactDisabled) == "false" {
 		return
@@ -46,7 +47,7 @@ func (s *Service) autoSaveContact(ctx context.Context, instanceID string, client
 	if client == nil || client.Store == nil || client.Store.Contacts == nil {
 		return
 	}
-	// Só contatos individuais (não grupos/broadcast/newsletter).
+	// Individual contacts only (not groups/broadcast/newsletter).
 	if toJID.Server != types.DefaultUserServer && toJID.Server != types.HiddenUserServer {
 		return
 	}
@@ -61,7 +62,7 @@ func (s *Service) autoSaveContact(ctx context.Context, instanceID string, client
 			}
 		}
 		if pn.Server == types.HiddenUserServer {
-			return // sem PN não dá p/ indexar a mutação
+			return // without a PN the mutation cannot be indexed
 		}
 	} else if client.Store.LIDs != nil {
 		if l, err := client.Store.LIDs.GetLIDForPN(ctx, pn); err == nil && !l.IsEmpty() {
@@ -76,14 +77,14 @@ func (s *Service) autoSaveContact(ctx context.Context, instanceID string, client
 		}
 	}
 
-	// Gate "já salvo": leitura local. Salvo = FullName/FirstName preenchidos (só PushName = conhecido).
+	// "Already saved" gate: local read. Saved = FullName/FirstName set (PushName only = just known).
 	contact, err := client.Store.Contacts.GetContact(ctx, pn)
 	if err == nil && (contact.FullName != "" || contact.FirstName != "") {
 		saveContactSeen.Store(seenKey, time.Now().Add(saveContactSeenTTL))
 		return
 	}
 
-	// Nome: o que veio no envio; senão o PushName que o contato já anunciou. Sem nome → não salva.
+	// Name: whatever came with the send; otherwise the PushName the contact already advertised. No name → don't save.
 	fullName := displayName
 	if fullName == "" {
 		fullName = contact.PushName
@@ -92,13 +93,13 @@ func (s *Service) autoSaveContact(ctx context.Context, instanceID string, client
 		return
 	}
 
-	// Marca ANTES de enviar (evita corrida entre 2 envios simultâneos ao mesmo número).
+	// Mark BEFORE sending (avoids a race between 2 simultaneous sends to the same number).
 	saveContactSeen.Store(seenKey, time.Now().Add(saveContactSeenTTL))
 	s.throttleSaveContact(instanceID)
 
 	patch := appstate.BuildContact(pn, fullName, "", lid, false)
 	if err := client.SendAppState(ctx, patch); err != nil {
-		// Não fatal: limpa a marca p/ tentar de novo num próximo envio.
+		// Not fatal: clear the mark to retry on a future send.
 		saveContactSeen.Delete(seenKey)
 		s.log.Warn("auto-save de contato falhou (não crítico)",
 			zap.String("instance_id", instanceID), zap.String("jid", pn.String()), zap.Error(err))
@@ -108,7 +109,7 @@ func (s *Service) autoSaveContact(ctx context.Context, instanceID string, client
 		zap.String("instance_id", instanceID), zap.String("jid", pn.String()))
 }
 
-// throttleSaveContact espaça mutações de app state por instância (só atrasa, não rejeita).
+// throttleSaveContact spaces out app state mutations per instance (only delays, never rejects).
 func (s *Service) throttleSaveContact(instanceID string) {
 	saveContactThrottleMu.Lock()
 	now := time.Now()

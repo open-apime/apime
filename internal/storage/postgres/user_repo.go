@@ -149,7 +149,7 @@ func (r *userRepo) UpdatePassword(ctx context.Context, id, passwordHash string) 
 }
 
 func (r *userRepo) Delete(ctx context.Context, id string) error {
-	// Verificar se é o último admin antes de deletar
+	// Prevent deleting the last admin so the system always has at least one.
 	var role string
 	err := r.db.Pool.QueryRow(ctx, `SELECT role FROM users WHERE id = $1`, id).Scan(&role)
 	if err != nil {

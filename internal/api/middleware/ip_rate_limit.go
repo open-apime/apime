@@ -22,7 +22,7 @@ type IPRateLimitOption struct {
 	SkipPrivateIPs bool
 }
 
-// IPRateLimit reforça limites por IP para rotas públicas.
+// IPRateLimit enforces per-IP limits for public routes.
 func IPRateLimit(opts IPRateLimitOption) gin.HandlerFunc {
 	if !opts.Enabled || opts.Limiter == nil || opts.Requests <= 0 || opts.WindowSeconds <= 0 {
 		return func(c *gin.Context) { c.Next() }

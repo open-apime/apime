@@ -22,7 +22,6 @@ func NewLimiter() *MemoryLimiter {
 	l := &MemoryLimiter{
 		items: make(map[string]*item),
 	}
-	// Start cleanup routine
 	go l.cleanupLoop()
 	return l
 }
@@ -35,7 +34,6 @@ func (l *MemoryLimiter) Allow(ctx context.Context, key string, limit int, window
 	val, exists := l.items[key]
 
 	if !exists || now.After(val.expiresAt) {
-		// New window or expired
 		l.items[key] = &item{
 			count:     1,
 			expiresAt: now.Add(window),
@@ -47,7 +45,6 @@ func (l *MemoryLimiter) Allow(ctx context.Context, key string, limit int, window
 		}, nil
 	}
 
-	// Existing active window
 	val.count++
 	remaining := limit - val.count
 	if remaining < 0 {

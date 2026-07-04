@@ -39,17 +39,17 @@ type SessionManager interface {
 }
 
 type Options struct {
-	AuthService         *auth.Service
-	InstanceService     *instance.Service
-	UserService         *user.Service
-	APITokenService     *api_token.Service
-	SessionManager      SessionManager
-	JWTSecret           string
-	DocsDirectory       string
-	BaseURL             string
-	Logger              *zap.Logger
-	EnableDashboard     bool
-	Timezone            string
+	AuthService     *auth.Service
+	InstanceService *instance.Service
+	UserService     *user.Service
+	APITokenService *api_token.Service
+	SessionManager  SessionManager
+	JWTSecret       string
+	DocsDirectory   string
+	BaseURL         string
+	Logger          *zap.Logger
+	EnableDashboard bool
+	Timezone        string
 }
 
 type Handler struct {
@@ -876,4 +876,3 @@ func (h *Handler) readOpenAPIPreview() (string, bool) {
 	}
 	return text, true
 }
-

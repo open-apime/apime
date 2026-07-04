@@ -105,8 +105,7 @@ func (h *MessageHandler) sendText(c *gin.Context) {
 		return
 	}
 
-	// Passar o JID/Phone cru para o service resolver dinamicamente via IsOnWhatsApp
-	// normalizeJID foi movido/refatorado para dentro do service
+	// Pass the raw JID/phone so the service can resolve it dynamically via IsOnWhatsApp.
 
 	msg, err := h.service.Send(c.Request.Context(), messageSvc.SendInput{
 		InstanceID:        instanceID,
@@ -147,7 +146,7 @@ func (h *MessageHandler) sendMedia(c *gin.Context) {
 		return
 	}
 	to := c.PostForm("to")
-	mediaType := c.PostForm("type") // "image" ou "video"
+	mediaType := c.PostForm("type") // "image" or "video"
 	caption := c.PostForm("caption")
 
 	if to == "" {
@@ -160,14 +159,12 @@ func (h *MessageHandler) sendMedia(c *gin.Context) {
 		return
 	}
 
-	// Obter arquivo
 	file, err := c.FormFile("file")
 	if err != nil {
 		response.ErrorWithMessage(c, http.StatusBadRequest, "arquivo não fornecido")
 		return
 	}
 
-	// Abrir arquivo
 	src, err := file.Open()
 	if err != nil {
 		response.ErrorWithMessage(c, http.StatusInternalServerError, "erro ao abrir arquivo")
@@ -175,14 +172,11 @@ func (h *MessageHandler) sendMedia(c *gin.Context) {
 	}
 	defer src.Close()
 
-	// Ler dados do arquivo
 	fileData, err := io.ReadAll(src)
 	if err != nil {
 		response.ErrorWithMessage(c, http.StatusInternalServerError, "erro ao ler arquivo")
 		return
 	}
-
-	// Passar o JID/Phone cru para o service resolver dinamicamente via IsOnWhatsApp
 
 	msg, err := h.service.Send(c.Request.Context(), messageSvc.SendInput{
 		InstanceID:        instanceID,
@@ -231,14 +225,12 @@ func (h *MessageHandler) sendAudio(c *gin.Context) {
 		return
 	}
 
-	// Obter arquivo
 	file, err := c.FormFile("file")
 	if err != nil {
 		response.ErrorWithMessage(c, http.StatusBadRequest, "arquivo não fornecido")
 		return
 	}
 
-	// Abrir arquivo
 	src, err := file.Open()
 	if err != nil {
 		response.ErrorWithMessage(c, http.StatusInternalServerError, "erro ao abrir arquivo")
@@ -246,20 +238,15 @@ func (h *MessageHandler) sendAudio(c *gin.Context) {
 	}
 	defer src.Close()
 
-	// Ler dados do arquivo
 	fileData, err := io.ReadAll(src)
 	if err != nil {
 		response.ErrorWithMessage(c, http.StatusInternalServerError, "erro ao ler arquivo")
 		return
 	}
 
-	// Passar o JID/Phone cru para o service resolver dinamicamente via IsOnWhatsApp
-
-	// Extrair duração (seconds)
 	secondsStr := c.PostForm("seconds")
 	seconds, _ := strconv.Atoi(secondsStr)
 
-	// Extrair flag PTT explícita
 	pttStr := c.PostForm("ptt")
 	ptt := pttStr == "true" || pttStr == "1"
 
@@ -315,19 +302,16 @@ func (h *MessageHandler) sendDocument(c *gin.Context) {
 		return
 	}
 
-	// Obter arquivo
 	file, err := c.FormFile("file")
 	if err != nil {
 		response.ErrorWithMessage(c, http.StatusBadRequest, "arquivo não fornecido")
 		return
 	}
 
-	// Usar nome do arquivo enviado se não fornecido
 	if fileName == "" {
 		fileName = file.Filename
 	}
 
-	// Abrir arquivo
 	src, err := file.Open()
 	if err != nil {
 		response.ErrorWithMessage(c, http.StatusInternalServerError, "erro ao abrir arquivo")
@@ -335,14 +319,11 @@ func (h *MessageHandler) sendDocument(c *gin.Context) {
 	}
 	defer src.Close()
 
-	// Ler dados do arquivo
 	fileData, err := io.ReadAll(src)
 	if err != nil {
 		response.ErrorWithMessage(c, http.StatusInternalServerError, "erro ao ler arquivo")
 		return
 	}
-
-	// Passar o JID/Phone cru para o service resolver dinamicamente via IsOnWhatsApp
 
 	msg, err := h.service.Send(c.Request.Context(), messageSvc.SendInput{
 		InstanceID:        instanceID,

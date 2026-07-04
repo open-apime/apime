@@ -14,7 +14,7 @@ type userRepo struct {
 	db *DB
 }
 
-// NewUserRepository cria um novo repositório de usuários.
+// NewUserRepository creates a new user repository.
 func NewUserRepository(db *DB) *userRepo {
 	return &userRepo{db: db}
 }
@@ -149,7 +149,7 @@ func (r *userRepo) UpdatePassword(ctx context.Context, id, passwordHash string) 
 }
 
 func (r *userRepo) Delete(ctx context.Context, id string) error {
-	// Verificar se é o último admin antes de deletar
+	// Prevent deleting the last admin, so the system always has one.
 	var role string
 	err := r.db.Conn.QueryRowContext(ctx, `SELECT role FROM users WHERE id = ?`, id).Scan(&role)
 	if err != nil {

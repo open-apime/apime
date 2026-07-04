@@ -99,11 +99,11 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (model.User, st
 
 	var tokenString string
 	if s.tokenService != nil {
-		// Gera um token padrão para facilitar o primeiro acesso do usuário.
+		// Generate a default token to ease the user's first access.
 		_, tokenString, err = s.tokenService.Create(ctx, createdUser.ID, "Default Token", nil)
 		if err != nil {
-			// Se falhar criar token, prosseguimos, mas sem retornar token.
-			// O usuário pode criar depois via dashboard.
+			// If token creation fails, proceed without a token; the user
+			// can create one later via the dashboard.
 		}
 	}
 

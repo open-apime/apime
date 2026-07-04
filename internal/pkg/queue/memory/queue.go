@@ -17,7 +17,7 @@ type MemoryQueue struct {
 
 func NewQueue(bufferSize int) *MemoryQueue {
 	if bufferSize <= 0 {
-		bufferSize = 1000 // default buffer
+		bufferSize = 1000
 	}
 	return &MemoryQueue{
 		events: make(chan queue.Event, bufferSize),
@@ -50,7 +50,7 @@ func (q *MemoryQueue) Dequeue(ctx context.Context, timeout time.Duration) (*queu
 		}
 		return &event, nil
 	case <-time.After(timeout):
-		return nil, nil // Timeout
+		return nil, nil
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}

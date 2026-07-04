@@ -7,9 +7,9 @@ import (
 	"go.mau.fi/whatsmeow/types"
 )
 
-// InMemMessageStore implementa a interface MessageStore do whatsmeow.
-// Ele armazena mensagens em memória para permitir que retries (reenvios)
-// funcionem corretamente mesmo quando vêm de dispositivos secundários ou LIDs.
+// InMemMessageStore implements the whatsmeow MessageStore interface.
+// It keeps messages in memory so that retries work correctly even when they
+// come from secondary devices or LIDs.
 type InMemMessageStore struct {
 	messages map[string]*waE2E.Message
 	mu       sync.RWMutex
@@ -32,13 +32,12 @@ func (s *InMemMessageStore) PutMessage(chat types.JID, id string, msg *waE2E.Mes
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// Se a mensagem já existe, apenas atualizamos
 	if _, ok := s.messages[id]; ok {
 		s.messages[id] = msg
 		return nil
 	}
 
-	// Se atingiu o limite, removemos o mais antigo (FIFO)
+	// When the limit is reached, evict the oldest entry (FIFO).
 	if len(s.order) >= s.maxSize {
 		oldest := s.order[0]
 		delete(s.messages, oldest)

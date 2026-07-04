@@ -8,19 +8,19 @@ import (
 	"github.com/open-apime/apime/internal/storage/media"
 )
 
-// MediaHandler lida com requisições de mídia
+// MediaHandler handles media requests
 type MediaHandler struct {
 	storage *media.Storage
 }
 
-// NewMediaHandler cria um novo handler de mídia
+// NewMediaHandler creates a new media handler
 func NewMediaHandler(storage *media.Storage) *MediaHandler {
 	return &MediaHandler{
 		storage: storage,
 	}
 }
 
-// GetMedia serve uma mídia pelo ID
+// GetMedia serves a media file by ID
 // GET /api/media/:instanceId/:mediaId
 func (h *MediaHandler) GetMedia(c *gin.Context) {
 	instanceID := c.Param("instanceId")
@@ -31,23 +31,19 @@ func (h *MediaHandler) GetMedia(c *gin.Context) {
 		return
 	}
 
-	// Verificar se existe
 	if !h.storage.Exists(instanceID, mediaID) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "mídia não encontrada ou expirada"})
 		return
 	}
 
-	// Obter dados
 	data, err := h.storage.Get(c.Request.Context(), instanceID, mediaID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 		return
 	}
 
-	// Detectar content-type pela extensão
 	contentType := getContentTypeFromFilename(mediaID)
 
-	// Configurar headers
 	c.Header("Content-Type", contentType)
 	c.Header("Cache-Control", "public, max-age=3600")
 	c.Header("Access-Control-Allow-Origin", "*")
@@ -56,9 +52,8 @@ func (h *MediaHandler) GetMedia(c *gin.Context) {
 	c.Data(http.StatusOK, contentType, data)
 }
 
-// getContentTypeFromFilename retorna o content-type baseado na extensão
+// getContentTypeFromFilename returns the content-type based on the file extension
 func getContentTypeFromFilename(filename string) string {
-	// Pegar últimos caracteres para verificar extensão
 	if len(filename) < 4 {
 		return "application/octet-stream"
 	}

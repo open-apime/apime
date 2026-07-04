@@ -14,7 +14,7 @@ import (
 	"github.com/open-apime/apime/internal/pkg/ratelimiter"
 )
 
-// RateLimitOption parametriza o middleware de limite por token.
+// RateLimitOption configures the per-token rate limit middleware.
 type RateLimitOption struct {
 	Enabled  bool
 	Requests int
@@ -24,7 +24,7 @@ type RateLimitOption struct {
 	Logger   *zap.Logger
 }
 
-// RateLimit aplica contagem de requisições por token usando Redis.
+// RateLimit counts requests per token using Redis.
 func RateLimit(opts RateLimitOption) gin.HandlerFunc {
 	if !opts.Enabled || opts.Limiter == nil || opts.Requests <= 0 || opts.Window <= 0 {
 		return func(c *gin.Context) { c.Next() }

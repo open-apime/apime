@@ -7,9 +7,9 @@ func Success(c *gin.Context, status int, payload interface{}) {
 }
 
 func Error(c *gin.Context, status int, err error) {
-	// Registra o erro no contexto do gin para que o middleware de Sentry
-	// (SentryReport) capture o erro real via CaptureError, em vez de apenas a
-	// mensagem genérica "HTTP <status>".
+	// Register the error in the gin context so the Sentry middleware
+	// (SentryReport) captures the real error via CaptureError, instead of just
+	// the generic "HTTP <status>" message.
 	if err != nil {
 		_ = c.Error(err)
 	}

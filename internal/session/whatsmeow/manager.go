@@ -33,9 +33,9 @@ import (
 
 const sentryLevelError = sentry.LevelError
 
-// reconexão normal de websocket do WhatsApp (auto-recuperada pela whatsmeow).
-// A lib loga esses casos como Error, mas são esperados e não são incidentes —
-// rebaixamos para Debug e não reportamos ao Sentry para não poluir.
+// Normal WhatsApp websocket reconnects (auto-recovered by whatsmeow).
+// The library logs these as Error, but they are expected and not incidents —
+// we downgrade them to Debug and skip Sentry reporting to avoid noise.
 var expectedReconnectNoise = []string{
 	"failed to read frame header",
 	"error reading from websocket",
@@ -70,7 +70,7 @@ func (z *zapLogger) Warnf(msg string, args ...interface{}) {
 }
 func (z *zapLogger) Errorf(msg string, args ...interface{}) {
 	formatted := fmt.Sprintf(msg, args...)
-	// Ruído de reconexão esperada: rebaixa para Debug e não reporta ao Sentry.
+	// Expected reconnect noise: downgrade to Debug and skip Sentry reporting.
 	if isExpectedReconnectNoise(formatted) {
 		z.log.Debug(formatted, zap.String("module", z.module))
 		return
@@ -167,7 +167,7 @@ type Manager struct {
 	connectedAt        map[string]time.Time
 	messageRepo        storage.MessageRepository
 	sharedContainer    *sqlstore.Container
-	outgoingMsgCache   sync.Map // msgID -> outgoingMsgEntry, para retry de qualquer tipo (inclusive mídia)
+	outgoingMsgCache   sync.Map // msgID -> outgoingMsgEntry, for retry of any type (including media)
 }
 
 type outgoingMsgEntry struct {
@@ -177,15 +177,15 @@ type outgoingMsgEntry struct {
 
 const outgoingMsgCacheTTL = 30 * time.Minute
 
-// CacheOutgoingMessage guarda o protobuf bruto da mensagem enviada para permitir
-// reconstrução em retry receipts (mídia inclusa, que não dá para remontar do banco).
+// CacheOutgoingMessage stores the raw protobuf of a sent message to allow
+// reconstruction on retry receipts (including media, which cannot be rebuilt from the database).
 func (m *Manager) CacheOutgoingMessage(id string, msg *waE2E.Message) {
 	if id == "" || msg == nil {
 		return
 	}
 	now := time.Now()
 	m.outgoingMsgCache.Store(id, outgoingMsgEntry{msg: msg, at: now})
-	// Limpeza oportunista de entradas expiradas.
+	// Opportunistic cleanup of expired entries.
 	m.outgoingMsgCache.Range(func(k, v any) bool {
 		if e, ok := v.(outgoingMsgEntry); ok && now.Sub(e.at) > outgoingMsgCacheTTL {
 			m.outgoingMsgCache.Delete(k)
@@ -195,11 +195,11 @@ func (m *Manager) CacheOutgoingMessage(id string, msg *waE2E.Message) {
 }
 
 func NewManager(log *zap.Logger, encKey, storageDriver, baseDir, pgConnString string, instanceRepo storage.InstanceRepository, historySyncRepo storage.HistorySyncRepository, messageRepo storage.MessageRepository, eventLogRepo storage.EventLogRepository) *Manager {
-	// Limita o history sync ao RECENTE (~3 dias). Sem limite (default), o celular tenta preparar
-	// o histórico INTEIRO no pareamento, travando o QR "infinitamente". Pedindo só o recente, o
-	// sync fica pequeno e rápido (libera o QR na hora) e roda em segundo plano — e mesmo assim
-	// entrega o NctSalt + privacy tokens (necessários para o tctoken/cstoken que evita o erro 463)
-	// e as mensagens/contatos recentes para servir via webhook.
+	// Limit history sync to RECENT data (~3 days). Without a limit (the default), the phone
+	// tries to prepare the ENTIRE history at pairing time, hanging the QR "forever". Requesting
+	// only recent data keeps the sync small and fast (releases the QR immediately) and runs in
+	// the background — while still delivering the NctSalt + privacy tokens (needed for the
+	// tctoken/cstoken that avoids error 463) and recent messages/contacts to serve via webhook.
 	if store.DeviceProps.HistorySyncConfig != nil {
 		store.DeviceProps.HistorySyncConfig.FullSyncDaysLimit = proto.Uint32(3)
 		store.DeviceProps.HistorySyncConfig.FullSyncSizeMbLimit = proto.Uint32(20)
@@ -438,7 +438,7 @@ func (m *Manager) createSession(ctx context.Context, instanceID string, forceRec
 
 	client := whatsmeow.NewClient(deviceStore, clientLog)
 	client.EnableAutoReconnect = true
-	client.ManualHistorySyncDownload = false // baixa o history (recente/limitado) em background → entrega NctSalt + tokens (fix 463) e msgs recentes
+	client.ManualHistorySyncDownload = false // downloads history (recent/limited) in the background → delivers NctSalt + tokens (fix 463) and recent messages
 	client.AutomaticMessageRerequestFromPhone = true
 
 	client.GetMessageForRetry = m.getMessageForRetryCallback(instanceID)
@@ -687,11 +687,11 @@ func (m *Manager) GetQR(ctx context.Context, instanceID string) (string, error) 
 						zap.String("instance_id", instanceID))
 					return m.CreateSession(ctx, instanceID)
 				}
-				// QR expirou (timeout do WhatsApp apagou currentQRs) mas o canal
-				// segue aberto e mudo — versões recentes do whatsmeow mantêm o
-				// qrChannel vivo após o timeout em vez de fechá-lo. Sem isto, o
-				// GetQR fica preso retornando "aguarde" pra sempre e o frontend
-				// nunca recebe um QR novo. Recriamos a sessão forçando novo canal.
+				// The QR expired (WhatsApp timeout cleared currentQRs) but the channel
+				// stays open and silent — recent whatsmeow versions keep the qrChannel
+				// alive after the timeout instead of closing it. Without this, GetQR gets
+				// stuck returning "wait" forever and the frontend never receives a new QR.
+				// We recreate the session to force a new channel.
 				m.log.Warn("canal QR vivo mas sem código após timeout, recriando sessão",
 					zap.String("instance_id", instanceID))
 				client.Disconnect()
@@ -794,7 +794,7 @@ func (m *Manager) RestoreSession(ctx context.Context, instanceID string, encrypt
 
 	client := whatsmeow.NewClient(deviceStore, clientLog)
 	client.EnableAutoReconnect = true
-	client.ManualHistorySyncDownload = false // baixa o history (recente/limitado) em background → entrega NctSalt + tokens (fix 463) e msgs recentes
+	client.ManualHistorySyncDownload = false // downloads history (recent/limited) in the background → delivers NctSalt + tokens (fix 463) and recent messages
 	client.AutomaticMessageRerequestFromPhone = true
 	client.GetMessageForRetry = m.getMessageForRetryCallback(instanceID)
 
@@ -1568,9 +1568,9 @@ func (m *Manager) handleEvent(instanceID string, evt any) {
 		switch evt.(type) {
 		case *events.Message, *events.Receipt, *events.Presence,
 			*events.UndecryptableMessage, *events.ChatPresence:
-			// UndecryptableMessage cobre view-once (stub sem mídia) e sessão dessincronizada;
-			// ChatPresence é o indicador "digitando…". Sem estes no encaminhamento, o
-			// normalizeEvent que os trata seria código morto.
+			// UndecryptableMessage covers view-once (stub without media) and desynced sessions;
+			// ChatPresence is the "typing…" indicator. Without forwarding these, the
+			// normalizeEvent that handles them would be dead code.
 			go handler.Handle(context.Background(), instanceID, instanceJID, client, evt)
 		}
 	}
@@ -1591,10 +1591,10 @@ func (m *Manager) handleEvent(instanceID string, evt any) {
 			go func() {
 				ctx := context.Background()
 
-				// Em grupo, receipt.Chat é o JID do grupo (@g.us), que NÃO é uma sessão
-				// Signal 1:1: resetar sessão/identidade pelo JID do grupo corrompe o estado
-				// de criptografia do grupo (sender keys) e faz parar de receber mensagens
-				// dos demais membros. O alvo correto do reset é o participante (receipt.Sender).
+				// In a group, receipt.Chat is the group JID (@g.us), which is NOT a 1:1
+				// Signal session: resetting session/identity by the group JID corrupts the
+				// group's encryption state (sender keys) and stops receiving messages from
+				// the other members. The correct reset target is the participant (receipt.Sender).
 				if receipt.Chat.Server == types.GroupServer {
 					if receipt.Sender.IsEmpty() {
 						m.log.Warn("retry receipt em grupo sem sender identificável - ignorando reset para não corromper sender keys do grupo",
@@ -1615,7 +1615,7 @@ func (m *Manager) handleEvent(instanceID string, evt any) {
 					zap.String("chat", receipt.Chat.String()))
 				_ = m.ResetContactSession(ctx, instanceID, receipt.Chat.String())
 
-				// Se o sender é um device linked diferente do chat principal, resetar também
+				// If the sender is a linked device different from the main chat, reset it too
 				if receipt.Sender.User == receipt.Chat.User && receipt.Sender.Device != receipt.Chat.Device && receipt.Sender.Device != 0 {
 					m.log.Info("Sender é device linked com sessão diferente, acionando reset adicional",
 						zap.String("instance_id", instanceID),
@@ -2001,9 +2001,9 @@ func (m *Manager) ResetContactSession(ctx context.Context, instanceID, jidStr st
 		return err
 	}
 
-	// Guard: JID de grupo (@g.us) não possui sessão/identidade Signal 1:1.
-	// Apagá-las via SignalAddress() do grupo corrompe as sender keys e quebra o
-	// recebimento de mensagens dos demais membros. Reset de grupo deve mirar o participante.
+	// Guard: a group JID (@g.us) has no 1:1 Signal session/identity.
+	// Deleting them via the group's SignalAddress() corrupts the sender keys and breaks
+	// receiving messages from the other members. A group reset must target the participant.
 	if jid.Server == types.GroupServer {
 		m.log.Warn("reset de sessão ignorado: JID de grupo não tem sessão Signal 1:1",
 			zap.String("instance_id", instanceID),
@@ -2106,7 +2106,7 @@ func (m *Manager) getMessageForRetryCallback(instanceID string) func(types.JID, 
 			zap.String("msg_id", id),
 			zap.String("chat", chat.String()))
 
-		// 1. Cache em memória do protobuf bruto — cobre qualquer tipo, inclusive mídia.
+		// 1. In-memory cache of the raw protobuf — covers any type, including media.
 		if val, ok := m.outgoingMsgCache.Load(id); ok {
 			if entry, ok := val.(outgoingMsgEntry); ok && entry.msg != nil && time.Since(entry.at) <= outgoingMsgCacheTTL {
 				m.log.Info("mensagem reconstruída para retry via cache de protobuf",

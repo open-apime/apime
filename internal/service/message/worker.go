@@ -95,7 +95,7 @@ func (w *OutboxWorker) processEvent(prefix string, event *queue.Event) {
 		MessageID:  event.ID,
 	}
 
-	// Aqui usamos o service.Send que já tem o loop de retentativa e o AUTO-TRUST
+	// We use service.Send here because it already has the retry loop and AUTO-TRUST
 	_, err := w.service.Send(w.ctx, input)
 	if err != nil {
 		w.log.Error(prefix+": falha final ao enviar mensagem",

@@ -102,7 +102,6 @@ func (h *InstanceHandler) list(c *gin.Context) {
 	userID := c.GetString("userID")
 	userRole := c.GetString("userRole")
 
-
 	instances, _, err := h.service.ListByUser(c.Request.Context(), userID, userRole, "", 0, 0)
 	if err != nil {
 		response.Error(c, http.StatusInternalServerError, err)
@@ -148,8 +147,7 @@ func (h *InstanceHandler) update(c *gin.Context) {
 	userID := c.GetString("userID")
 	userRole := c.GetString("userRole")
 
-	// Mesma convenção do dashboard (dashboard.go updateInstance): dono = userID; admin usa "admin".
-	// Antes passava userRole (vazio na API) como OwnerUserID → "not found" p/ qualquer usuário.
+	// Same convention as the dashboard (dashboard.go updateInstance): owner = userID; admin uses "admin".
 	callerID := userID
 	if userRole == "admin" {
 		callerID = "admin"
@@ -491,26 +489,26 @@ func (h *InstanceHandler) getProfilePicture(c *gin.Context) {
 	}
 
 	pictureInfo, err := client.GetProfilePictureInfo(c.Request.Context(), jid, nil)
-	// Casos benignos: contato sem foto ou que escondeu a foto não são erro de
-	// servidor — respondemos 200 com null em vez de 500.
+	// Benign cases: a contact with no picture or who hid their picture is not a
+	// server error — respond 200 with null instead of 500.
 	if errors.Is(err, whatsmeow.ErrProfilePictureNotSet) || errors.Is(err, whatsmeow.ErrProfilePictureUnauthorized) {
 		response.Success(c, http.StatusOK, nil)
 		return
 	}
-	// Instância instável (socket caído, reconectando, IQ sem resposta) não é erro
-	// de servidor — a foto não está disponível neste momento. Respondemos 200 com
-	// null (mesmo tratamento de "sem foto"); o consumidor re-busca no próximo ciclo
-	// quando a instância reconectar. Evita poluir o Sentry com 5xx.
+	// An unstable instance (socket down, reconnecting, unanswered IQ) is not a
+	// server error — the picture is simply unavailable right now. Respond 200 with
+	// null (same handling as "no picture"); the consumer re-fetches on the next cycle
+	// once the instance reconnects. Avoids polluting Sentry with 5xx.
 	if errors.Is(err, whatsmeow.ErrNotConnected) || errors.Is(err, whatsmeow.ErrNotLoggedIn) ||
 		errors.Is(err, whatsmeow.ErrClientIsNil) || errors.Is(err, whatsmeow.ErrIQTimedOut) {
 		response.Success(c, http.StatusOK, nil)
 		return
 	}
-	// Erros transitórios/de protocolo do lado do WhatsApp também não são falha
-	// nossa: rate limit, indisponibilidade temporária, foto bloqueada (forbidden),
-	// recurso removido (gone), resposta incompleta da Meta (ElementMissing) ou
-	// request cancelado/expirado pelo consumidor. A foto é best-effort — respondemos
-	// 200 null e o consumidor re-busca. Evita poluir o Sentry com 5xx.
+	// Transient/protocol errors on the WhatsApp side are also not our fault:
+	// rate limit, temporary unavailability, blocked picture (forbidden),
+	// removed resource (gone), an incomplete response from Meta (ElementMissing), or
+	// a request cancelled/expired by the consumer. The picture is best-effort — respond
+	// 200 null and the consumer re-fetches. Avoids polluting Sentry with 5xx.
 	var elementMissing *whatsmeow.ElementMissingError
 	if errors.Is(err, whatsmeow.ErrIQRateOverLimit) || errors.Is(err, whatsmeow.ErrIQServiceUnavailable) ||
 		errors.Is(err, whatsmeow.ErrIQForbidden) || errors.Is(err, whatsmeow.ErrIQGone) ||
@@ -519,10 +517,10 @@ func (h *InstanceHandler) getProfilePicture(c *gin.Context) {
 		response.Success(c, http.StatusOK, nil)
 		return
 	}
-	// bad-request (400) significa que o JID consultado é inválido/inexistente do
-	// ponto de vista do servidor WhatsApp (ex.: número malformado, JID sintético).
-	// É erro de entrada do chamador, não falha do servidor: respondemos 400 com a
-	// mensagem, em vez de 500. O ideal é o chamador parar de consultar JIDs inválidos.
+	// bad-request (400) means the queried JID is invalid/non-existent from the
+	// WhatsApp server's point of view (e.g. malformed number, synthetic JID).
+	// It's a caller input error, not a server failure: respond 400 with the
+	// message instead of 500. Ideally the caller stops querying invalid JIDs.
 	if errors.Is(err, whatsmeow.ErrIQBadRequest) {
 		response.Error(c, http.StatusBadRequest, fmt.Errorf("JID inválido para consulta de foto: %s", jidStr))
 		return
@@ -532,7 +530,7 @@ func (h *InstanceHandler) getProfilePicture(c *gin.Context) {
 		return
 	}
 
-	// Sem erro, mas a lib pode retornar nil quando não há foto.
+	// No error, but the lib may return nil when there is no picture.
 	response.Success(c, http.StatusOK, pictureInfo)
 }
 

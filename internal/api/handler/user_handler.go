@@ -11,17 +11,17 @@ import (
 	userSvc "github.com/open-apime/apime/internal/service/user"
 )
 
-// UserHandler expõe endpoints de gerenciamento de usuários.
+// UserHandler exposes user management endpoints.
 type UserHandler struct {
 	service *userSvc.Service
 }
 
-// NewUserHandler cria um novo handler de usuários.
+// NewUserHandler creates a new user handler.
 func NewUserHandler(service *userSvc.Service) *UserHandler {
 	return &UserHandler{service: service}
 }
 
-// Register registra os endpoints protegidos.
+// Register registers the protected endpoints.
 func (h *UserHandler) Register(r *gin.RouterGroup) {
 	admin := r.Group("")
 	admin.Use(middleware.RequireAdmin(h.service))
@@ -66,7 +66,6 @@ func (h *UserHandler) create(c *gin.Context) {
 		return
 	}
 
-	// Retorna o usuário criado e o token gerado
 	response.Success(c, http.StatusCreated, gin.H{
 		"user":     user,
 		"apiToken": token,

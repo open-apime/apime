@@ -44,7 +44,7 @@ func NewRouter(opts Options) *gin.Engine {
 	}
 	router.Use(gin.Recovery())
 	if sentryx.IsEnabled() {
-		// Repanic=true: deixa o gin.Recovery acima absorver após o capture.
+		// Repanic=true lets the gin.Recovery above absorb the panic after the capture.
 		router.Use(sentrygin.New(sentrygin.Options{Repanic: true}))
 		router.Use(middleware.SentryReport())
 	}
@@ -70,7 +70,6 @@ func NewRouter(opts Options) *gin.Engine {
 		protected.Use(middleware.RateLimit(opts.RateLimit))
 	}
 	if opts.APITokenService != nil {
-		// Type assertion para *api_token.Service
 		if apiTokenSvc, ok := opts.APITokenService.(*api_token.Service); ok {
 			var instanceRepo storage.InstanceRepository
 			if repo, ok := opts.InstanceRepo.(storage.InstanceRepository); ok {

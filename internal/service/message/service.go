@@ -124,26 +124,26 @@ type ContactEntry struct {
 }
 
 type SendInput struct {
-	InstanceID string
-	To         string
-	Type       string
-	Text       string
-	MediaData  []byte
-	MediaType  string
-	Caption    string
-	FileName   string
-	Seconds    int
-	PTT        bool
-	MessageID  string
-	Quoted        string
-	Participant   string
-	QuotedText    string
-	MentionedJids []string
+	InstanceID        string
+	To                string
+	Type              string
+	Text              string
+	MediaData         []byte
+	MediaType         string
+	Caption           string
+	FileName          string
+	Seconds           int
+	PTT               bool
+	MessageID         string
+	Quoted            string
+	Participant       string
+	QuotedText        string
+	MentionedJids     []string
 	MarkReadMessageID string
 	MarkReadSender    string
-	DisplayName string
-	Vcard       string
-	Contacts    []ContactEntry
+	DisplayName       string
+	Vcard             string
+	Contacts          []ContactEntry
 }
 
 func (s *Service) Send(ctx context.Context, input SendInput) (model.Message, error) {
@@ -246,7 +246,7 @@ func (s *Service) Send(ctx context.Context, input SendInput) (model.Message, err
 		return model.Message{}, fmt.Errorf("falha ao resolver destinatário %s: %w", input.To, err)
 	}
 
-	// Garante o destinatário na lista de contatos da conta antes de enviar (best-effort, não bloqueia).
+	// Ensure the recipient is in the account's contact list before sending (best-effort, non-blocking).
 	s.autoSaveContact(ctx, input.InstanceID, client, toJID, input.DisplayName)
 
 	if toJID.Server == types.DefaultUserServer || toJID.Server == types.HiddenUserServer {
@@ -324,11 +324,11 @@ func (s *Service) Send(ctx context.Context, input SendInput) (model.Message, err
 
 		// 5. Content-based dynamic delay
 		presenceDelay := calculatePresenceDelay(input)
-		// "Nova conversa" só quando NÃO há sessão de cripto E NÃO houve inbound rastreado.
-		// hasSession sozinho é heurístico (checa o device 0 via ToNonAD, não o device real do
-		// contato — ex.: :80 em contatos LID), então dispara falso-positivo de "nova sessão"
-		// em conversas ativas. Se o contato acabou de nos mandar mensagem (markMsgID != ""),
-		// é uma resposta a conversa aberta — não inicia nada novo nem adiciona delay extra.
+		// Treat as "new conversation" only when there is NO crypto session AND NO tracked inbound.
+		// hasSession alone is heuristic (it checks device 0 via ToNonAD, not the contact's real
+		// device — e.g. :80 on LID contacts), so it yields false positives for "new session" on
+		// active conversations. If the contact just messaged us (markMsgID != ""), this is a reply
+		// to an open conversation — don't start anything new nor add extra delay.
 		if err == nil && !hasSession && markMsgID == "" {
 			s.log.Info("Nova conversa detectada (sem sessão e sem inbound recente)...",
 				zap.String("instance_id", input.InstanceID),
@@ -589,7 +589,6 @@ func (s *Service) Send(ctx context.Context, input SendInput) (model.Message, err
 				ContactsArrayMessage: arrMsg,
 			}
 		} else {
-			// Contato único
 			vcard := input.Vcard
 			displayName := input.DisplayName
 			if len(input.Contacts) == 1 {
@@ -665,13 +664,13 @@ func (s *Service) Send(ctx context.Context, input SendInput) (model.Message, err
 
 		resp, err = client.SendMessage(ctx, toJID, waMessage)
 		if err == nil {
-			// Validar se WhatsApp realmente aceitou
+			// An empty ID means WhatsApp did not actually accept the message.
 			if resp.ID == "" {
 				s.log.Warn("WhatsApp retornou ID vazio - envio pode ter falhado",
 					zap.Int("attempt", attempt),
 					zap.String("to", toJID.String()))
 				err = fmt.Errorf("WhatsApp não confirmou envio (ID vazio)")
-				continue // Tenta retry
+				continue
 			}
 
 			s.log.Info("mensagem enviada com sucesso",
@@ -708,7 +707,6 @@ func (s *Service) Send(ctx context.Context, input SendInput) (model.Message, err
 			s.log.Warn("WhatsApp restrito (error 463), abortando retentativas",
 				zap.String("instance_id", input.InstanceID),
 				zap.String("to", toJID.String()))
-			// Registrar evento no log da conexão
 			if s.eventLogRepo != nil {
 				go func() {
 					evtCtx, evtCancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -721,21 +719,21 @@ func (s *Service) Send(ctx context.Context, input SendInput) (model.Message, err
 					})
 				}()
 			}
-			// Empurra o evento como webhook para o consumidor (acloud/Bravo/Doar) refletir a
-			// restrição no status da conexão de forma proativa — espelhando o padrão Meta-ban —
-			// sem depender de o consumidor inspecionar o erro síncrono do envio.
+			// Push the event as a webhook so the consumer can proactively reflect the restriction
+			// in the connection status — mirroring the Meta-ban pattern — without relying on the
+			// consumer inspecting the synchronous send error.
 			if s.webhookQueue != nil {
 				evt := queue.Event{
 					ID:         uuid.NewString(),
 					InstanceID: input.InstanceID,
 					Type:       "temporary_ban",
 					Payload: map[string]interface{}{
-					"type":   "temporary_ban",
-					"reason": "server returned error 463",
-					"detail": "Conta possivelmente restrita ou banida pelo WhatsApp",
-					"to":     toJID.String(),
-					"code":   463,
-				},
+						"type":   "temporary_ban",
+						"reason": "server returned error 463",
+						"detail": "Conta possivelmente restrita ou banida pelo WhatsApp",
+						"to":     toJID.String(),
+						"code":   463,
+					},
 					CreatedAt: time.Now(),
 				}
 				if enqErr := s.webhookQueue.Enqueue(ctx, evt); enqErr != nil {
@@ -775,16 +773,15 @@ func (s *Service) Send(ctx context.Context, input SendInput) (model.Message, err
 		isDisconnectedErr := strings.Contains(err.Error(), "not logged in") ||
 			strings.Contains(err.Error(), "device JID")
 
-		// Falha de transporte/sessão (socket caído, sem conexão, timeout) NÃO prova
-		// que o número não existe no WhatsApp — só o IsOnWhatsApp prova isso.
-		// Persistir negativo aqui envenena o cache do banco e bloqueia reenvios
-		// legítimos até o TTL expirar. Só grava negativo em erro não-transitório.
+		// A transport/session failure (dropped socket, no connection, timeout) does NOT prove
+		// the number does not exist on WhatsApp — only IsOnWhatsApp proves that. Persisting a
+		// negative here poisons the database cache and blocks legitimate resends until the TTL
+		// expires. Only record a negative on a non-transient error.
 		//
-		// Importante: uma falha de SendMessage (ban temporário 463, identidade não
-		// confiável, sessão de cripto ausente, qualquer "server returned error") também
-		// NÃO prova inexistência do número — o JID já foi resolvido por IsOnWhatsApp/cache
-		// positivo antes de chegar aqui. Tratamos esses casos como transitórios para não
-		// envenenar o cache negativo.
+		// Important: a SendMessage failure (temporary ban 463, untrusted identity, missing crypto
+		// session, any "server returned error") also does NOT prove the number is absent — the JID
+		// was already resolved via IsOnWhatsApp/positive cache before reaching here. We treat these
+		// as transient so we don't poison the negative cache.
 		errMsg := err.Error()
 		isTransientErr := isDisconnectedErr ||
 			strings.Contains(errMsg, "connection") ||
@@ -796,10 +793,10 @@ func (s *Service) Send(ctx context.Context, input SendInput) (model.Message, err
 			strings.Contains(errMsg, "untrusted identity") ||
 			strings.Contains(errMsg, "no signal session")
 
-		// Só remove o JID do cache em memória quando o erro NÃO é transitório. Em erro
-		// transitório (463, socket, sessão), limpar o cache forçaria o próximo envio a
-		// refazer IsOnWhatsApp (query de descoberta) para um contato já conhecido — pegada
-		// de "prospecção" que agrava a heurística anti-spam. Mantemos o positivo aquecido.
+		// Only drop the JID from the in-memory cache when the error is NOT transient. On a
+		// transient error (463, socket, session), clearing the cache would force the next send to
+		// redo IsOnWhatsApp (a discovery query) for an already-known contact — a "prospecting"
+		// footprint that worsens the anti-spam heuristic. We keep the positive warm.
 		if !isTransientErr {
 			jidCache.Delete(input.To)
 			s.log.Info("Removido do cache de JID devido a erro não-transitório de envio", zap.String("phone", input.To))

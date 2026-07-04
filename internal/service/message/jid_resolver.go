@@ -88,14 +88,13 @@ func (s *Service) ResolveJID(ctx context.Context, client *whatsmeow.Client, phon
 		return types.ParseJID(phone + "@s.whatsapp.net")
 	}
 
-	// Consulta sequencial: 1 número por vez (simula comportamento humano)
-	// Se o original não for encontrado e houver variante, tenta com delay
+	// Query sequentially, one number at a time, to mimic human behavior:
+	// if the original is not found and a variant exists, retry it after a delay.
 
 	delay := 1000 + rand.Intn(2000)
 	s.log.Debug("Aplicando delay de segurança antes de IsOnWhatsApp", zap.Int("ms", delay))
 	time.Sleep(time.Duration(delay) * time.Millisecond)
 
-	// 1. Consultar número original
 	s.log.Debug("Consultando IsOnWhatsApp", zap.String("phone", phone))
 	resp, err := client.IsOnWhatsApp(ctx, []string{phone})
 	if err != nil {
@@ -111,16 +110,16 @@ func (s *Service) ResolveJID(ctx context.Context, client *whatsmeow.Client, phon
 		}
 	}
 
-	// 2. Se não encontrou, tentar variante (BR apenas, 1 número por vez)
+	// If not found, try a variant (Brazil only, one number at a time).
 	if resolvedJID.IsEmpty() {
 		var variant string
 
 		if len(phone) == 13 && strings.HasPrefix(phone, "55") {
-			// 13 dígitos: tentar sem o 9
+			// 13 digits: try without the extra leading 9.
 			variant = phone[:4] + phone[5:]
 		} else if len(phone) == 12 && strings.HasPrefix(phone, "55") {
 			afterDDD := phone[4:]
-			// 12 dígitos: tentar com 9 apenas para celulares (prefixo 6-9)
+			// 12 digits: add the 9 only for mobile numbers (prefix 6-9).
 			if len(afterDDD) > 0 && afterDDD[0] >= '6' && afterDDD[0] <= '9' {
 				variant = phone[:4] + "9" + afterDDD
 			}
@@ -172,20 +171,20 @@ func (s *Service) ResolveJID(ctx context.Context, client *whatsmeow.Client, phon
 	return resolvedJID, nil
 }
 
-// ConfirmJID invalida cache negativo e persiste o mapeamento positivo a partir
-// de um evento real (mensagem, recibo, presença) que comprova que o número está no WhatsApp.
-// Aceita apenas JIDs do servidor s.whatsapp.net.
+// ConfirmJID invalidates the negative cache and persists the positive mapping
+// based on a real event (message, receipt, presence) that proves the number is on WhatsApp.
+// It only accepts JIDs from the s.whatsapp.net server.
 func (s *Service) ConfirmJID(ctx context.Context, jid types.JID) {
 	if jid.Server != types.DefaultUserServer || jid.User == "" {
 		return
 	}
-	// Normaliza para JID de usuário (device 0) — eventos vêm com device part
-	// (ex.: 554788359190:48@s.whatsapp.net) e o SendMessage exige destinatário sem device.
+	// Normalize to a user JID (device 0): events carry a device part
+	// (e.g. 554788359190:48@s.whatsapp.net) and SendMessage requires a recipient without a device.
 	jid = jid.ToNonAD()
 	phone := jid.User
 	jidStr := jid.String()
 
-	// Fast path: cache positivo válido com mesmo JID — nada a fazer, não toca DB.
+	// Fast path: a valid positive cache entry with the same JID means nothing to do, no DB access.
 	if val, loaded := jidCache.Load(phone); loaded {
 		if entry, ok := val.(jidCacheEntry); ok && !entry.jid.IsEmpty() && entry.jid.String() == jidStr && time.Now().Before(entry.expiresAt) {
 			return

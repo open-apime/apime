@@ -89,12 +89,11 @@ func (s *Storage) Exists(instanceID string, mediaID string) bool {
 	return err == nil
 }
 
-// GetPath retorna o caminho completo do arquivo
+// GetPath returns the full file path.
 func (s *Storage) GetPath(instanceID string, mediaID string) string {
 	return filepath.Join(s.baseDir, instanceID, mediaID)
 }
 
-// startCleanupJob inicia job de limpeza periódica
 func (s *Storage) startCleanupJob() {
 	ticker := time.NewTicker(30 * time.Minute)
 	defer ticker.Stop()
@@ -104,7 +103,6 @@ func (s *Storage) startCleanupJob() {
 	}
 }
 
-// cleanup remove arquivos mais antigos que o TTL
 func (s *Storage) cleanup() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -116,7 +114,7 @@ func (s *Storage) cleanup() {
 
 	err := filepath.WalkDir(s.baseDir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
-			return nil // Ignorar erros e continuar
+			return nil
 		}
 
 		if d.IsDir() {

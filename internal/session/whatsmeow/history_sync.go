@@ -13,7 +13,7 @@ import (
 
 func (m *Manager) initHistorySyncCycle(instanceID string) {
 	ctx := context.Background()
-	
+
 	if m.instanceRepo == nil || m.historySyncRepo == nil {
 		m.log.Warn("repositórios não disponíveis para history sync", zap.String("instance_id", instanceID))
 		return
@@ -115,15 +115,15 @@ func (m *Manager) runHistorySyncWorker(ctx context.Context, instanceID, cycleID 
 		zap.String("cycle_id", cycleID),
 	)
 
-	// Com ManualHistorySyncDownload ativado, o histórico não é baixado automaticamente
-	// O worker apenas marca o ciclo como completo após um tempo
+	// With ManualHistorySyncDownload enabled, history is not downloaded automatically.
+	// The worker just marks the cycle as complete after a delay.
 	time.Sleep(10 * time.Second)
 
 	m.log.Info("finalizando ciclo de history sync (modo manual ativado)",
 		zap.String("instance_id", instanceID),
 		zap.String("cycle_id", cycleID),
 	)
-	
+
 	m.finalizeHistorySyncCycle(instanceID, model.HistorySyncStatusCompleted)
 }
 
@@ -136,17 +136,16 @@ func (m *Manager) processHistorySyncPayload(ctx context.Context, instanceID stri
 		return nil
 	}
 
-	// Deserializar a notificação original
 	var notif struct {
-		FileSHA256 []byte `json:"fileSHA256"`
-		FileLength uint64 `json:"fileLength"`
-		MediaKey   []byte `json:"mediaKey"`
+		FileSHA256    []byte `json:"fileSHA256"`
+		FileLength    uint64 `json:"fileLength"`
+		MediaKey      []byte `json:"mediaKey"`
 		FileEncSHA256 []byte `json:"fileEncSHA256"`
-		DirectPath string `json:"directPath"`
-		SyncType   int32  `json:"syncType"`
-		ChunkOrder uint32 `json:"chunkOrder"`
+		DirectPath    string `json:"directPath"`
+		SyncType      int32  `json:"syncType"`
+		ChunkOrder    uint32 `json:"chunkOrder"`
 	}
-	
+
 	if err := json.Unmarshal(payload.Payload, &notif); err != nil {
 		m.log.Error("erro ao deserializar notification",
 			zap.String("instance_id", instanceID),
@@ -162,14 +161,14 @@ func (m *Manager) processHistorySyncPayload(ctx context.Context, instanceID stri
 		zap.Int32("sync_type", notif.SyncType),
 	)
 
-	// Marcar como processado sem fazer download real para evitar erros
-	// O histórico já foi baixado automaticamente pelo WhatsMeow antes de ativarmos ManualHistorySyncDownload
+	// Mark as processed without a real download to avoid errors: the history was
+	// already downloaded automatically by WhatsMeow before we enabled ManualHistorySyncDownload.
 	return nil
 }
 
 func (m *Manager) finalizeHistorySyncCycle(instanceID string, status model.HistorySyncStatus) {
 	ctx := context.Background()
-	
+
 	if m.instanceRepo == nil {
 		return
 	}
