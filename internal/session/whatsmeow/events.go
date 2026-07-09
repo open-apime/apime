@@ -343,7 +343,10 @@ func (m *Manager) handleEvent(instanceID string, evt any) {
 				zap.String("instance_id", instanceID))
 		}
 	case *events.AppStateSyncError:
-		m.log.Error("erro no app state sync",
+		// Non-critical: app-state patch failures (e.g. mismatching LTHash on regular_low, which only
+		// holds pin/archive settings) don't affect messaging or the crypto session, and whatsmeow
+		// recovers on the next full sync. Logged at warn to avoid Sentry noise.
+		m.log.Warn("app state sync falhou (não crítico)",
 			zap.String("instance_id", instanceID),
 			zap.String("name", string(v.Name)),
 			zap.Error(v.Error),

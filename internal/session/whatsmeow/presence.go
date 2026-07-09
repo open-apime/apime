@@ -87,8 +87,14 @@ func (m *Manager) ResetContactSession(ctx context.Context, instanceID, jidStr st
 	client, exists := m.clients[instanceID]
 	m.mu.RUnlock()
 
-	if !exists || client == nil || client.Store == nil {
+	if !exists || client == nil || client.Store == nil ||
+		client.Store.Sessions == nil || client.Store.Identities == nil {
+		// A session still being restored (staggered boot) has a Store whose sub-stores aren't wired
+		// yet — dereferencing them below panics. Bail out as a handled error instead.
 		return fmt.Errorf("store não disponível")
+	}
+	if !client.IsLoggedIn() {
+		return fmt.Errorf("instância não logada")
 	}
 
 	jid, err := types.ParseJID(jidStr)
