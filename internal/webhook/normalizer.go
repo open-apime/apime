@@ -435,7 +435,7 @@ func (h *EventHandler) normalizeEvent(ctx context.Context, instanceID string, cl
 		// apart by UnavailableType so the consumer shows the right notice instead of "unavailable".
 		if evt.UnavailableType == events.UnavailableTypeViewOnce {
 			result["unavailableType"] = "view_once"
-			result["text"] = "🔒 Mensagem de visualização única — abra no celular"
+			result["text"] = "Mensagem de visualização única, disponível apenas no celular."
 		} else {
 			result["text"] = "Mensagem indisponível"
 		}
