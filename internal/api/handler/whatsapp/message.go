@@ -154,11 +154,11 @@ func (h *Handler) deleteForEveryone(c *gin.Context) {
 		return
 	}
 
-	chatStr := strings.TrimSpace(req.Chat)
-	if !strings.Contains(chatStr, "@") {
-		chatStr = strings.TrimPrefix(chatStr, "+") + "@s.whatsapp.net"
-	}
-	chatJID, err := types.ParseJID(chatStr)
+	unlock := instancelock.Acquire(instanceID)
+	defer unlock()
+
+	// Resolve o destino via ResolveJID (mesmo caminho do texto) — ver nota em sendReaction.
+	chatJID, err := h.messageService.ResolveJID(c.Request.Context(), client, strings.TrimSpace(req.Chat))
 	if err != nil {
 		response.ErrorWithMessage(c, http.StatusBadRequest, "chat inválido")
 		return
@@ -177,8 +177,6 @@ func (h *Handler) deleteForEveryone(c *gin.Context) {
 		}
 	}
 
-	unlock := instancelock.Acquire(instanceID)
-	defer unlock()
 	humanPause()
 
 	resp, err := client.RevokeMessage(c.Request.Context(), chatJID, types.MessageID(req.MessageID))
@@ -222,18 +220,16 @@ func (h *Handler) editMessage(c *gin.Context) {
 		return
 	}
 
-	chatStr := strings.TrimSpace(req.Chat)
-	if !strings.Contains(chatStr, "@") {
-		chatStr = strings.TrimPrefix(chatStr, "+") + "@s.whatsapp.net"
-	}
-	chatJID, err := types.ParseJID(chatStr)
+	unlock := instancelock.Acquire(instanceID)
+	defer unlock()
+
+	// Resolve o destino via ResolveJID (mesmo caminho do texto) — ver nota em sendReaction.
+	chatJID, err := h.messageService.ResolveJID(c.Request.Context(), client, strings.TrimSpace(req.Chat))
 	if err != nil {
 		response.ErrorWithMessage(c, http.StatusBadRequest, "chat inválido")
 		return
 	}
 
-	unlock := instancelock.Acquire(instanceID)
-	defer unlock()
 	humanPause()
 
 	editMsg := client.BuildEdit(chatJID, types.MessageID(req.MessageID), &waE2E.Message{
@@ -279,11 +275,14 @@ func (h *Handler) sendReaction(c *gin.Context) {
 		return
 	}
 
-	chatStr := strings.TrimSpace(req.Chat)
-	if !strings.Contains(chatStr, "@") {
-		chatStr = strings.TrimPrefix(chatStr, "+") + "@s.whatsapp.net"
-	}
-	chatJID, err := types.ParseJID(chatStr)
+	unlock := instancelock.Acquire(instanceID)
+	defer unlock()
+
+	// Resolve o destino pelo mesmo caminho do envio de texto (ResolveJID popula o
+	// mapeamento PN->LID no store da lib). Sem isso, SendMessage força PN->LID e falha
+	// com "no LID found ... from server" quando o LID não está em cache. Trata @lid/@g.us.
+	// Dentro do lock, como o envio de texto, para serializar o IsOnWhatsApp por instância.
+	chatJID, err := h.messageService.ResolveJID(c.Request.Context(), client, strings.TrimSpace(req.Chat))
 	if err != nil {
 		response.ErrorWithMessage(c, http.StatusBadRequest, "chat inválido")
 		return
@@ -316,8 +315,6 @@ func (h *Handler) sendReaction(c *gin.Context) {
 		},
 	}
 
-	unlock := instancelock.Acquire(instanceID)
-	defer unlock()
 	humanPause()
 
 	resp, err := client.SendMessage(c.Request.Context(), chatJID, waMessage)
