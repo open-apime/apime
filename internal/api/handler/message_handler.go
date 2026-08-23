@@ -34,20 +34,29 @@ func parseMentionedJids(c *gin.Context) []string {
 
 type MessageHandler struct {
 	service *messageSvc.Service
+	// Optional: when set, guards the send routes so a retried request replays
+	// the first result instead of sending the message twice.
+	idempotency gin.HandlerFunc
 }
 
-func NewMessageHandler(service *messageSvc.Service) *MessageHandler {
-	return &MessageHandler{service: service}
+func NewMessageHandler(service *messageSvc.Service, idempotency gin.HandlerFunc) *MessageHandler {
+	return &MessageHandler{service: service, idempotency: idempotency}
 }
 
 func (h *MessageHandler) Register(r *gin.RouterGroup) {
-	r.POST("/instances/:id/messages", h.enqueue)
-	r.POST("/instances/:id/messages/text", h.sendText)
-	r.POST("/instances/:id/messages/media", h.sendMedia)
-	r.POST("/instances/:id/messages/audio", h.sendAudio)
-	r.POST("/instances/:id/messages/document", h.sendDocument)
-	r.POST("/instances/:id/messages/contact", h.sendContact)
-	r.POST("/instances/:id/messages/location", h.sendLocation)
+	send := r.Group("")
+	if h.idempotency != nil {
+		send.Use(h.idempotency)
+	}
+	send.POST("/instances/:id/messages", h.enqueue)
+	send.POST("/instances/:id/messages/text", h.sendText)
+	send.POST("/instances/:id/messages/media", h.sendMedia)
+	send.POST("/instances/:id/messages/audio", h.sendAudio)
+	send.POST("/instances/:id/messages/document", h.sendDocument)
+	send.POST("/instances/:id/messages/contact", h.sendContact)
+	send.POST("/instances/:id/messages/location", h.sendLocation)
+
+	// Listing is already idempotent by definition.
 	r.GET("/instances/:id/messages", h.list)
 }
 

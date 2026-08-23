@@ -42,6 +42,27 @@ type Message struct {
 	CreatedAt   time.Time  `json:"createdAt"`
 }
 
+// IdempotencyRecord makes a retried send safe: the first request stores its
+// result under the caller's key, and a repeat replays it instead of sending
+// the message to WhatsApp twice.
+type IdempotencyRecord struct {
+	InstanceID     string    `json:"instanceId"`
+	Key            string    `json:"key"`
+	RequestHash    string    `json:"requestHash"`
+	Status         string    `json:"status"`
+	ResponseStatus int       `json:"responseStatus"`
+	ResponseBody   string    `json:"responseBody"`
+	CreatedAt      time.Time `json:"createdAt"`
+	ExpiresAt      time.Time `json:"expiresAt"`
+}
+
+// Set while the request runs, so a concurrent repeat is rejected instead of
+// sending a second message.
+const (
+	IdempotencyStarted   = "started"
+	IdempotencyCompleted = "completed"
+)
+
 type EventLog struct {
 	ID          string     `json:"id"`
 	InstanceID  string     `json:"instanceId"`

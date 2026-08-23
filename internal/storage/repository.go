@@ -62,6 +62,15 @@ type HistorySyncRepository interface {
 	DeleteByInstance(ctx context.Context, instanceID string) error
 }
 
+type IdempotencyRepository interface {
+	// TryAcquire inserts the key and reports whether this caller owns the
+	// request. When it does not, the stored record comes back for replay.
+	TryAcquire(ctx context.Context, record model.IdempotencyRecord) (bool, model.IdempotencyRecord, error)
+	Complete(ctx context.Context, instanceID, key string, responseStatus int, responseBody string) error
+	Release(ctx context.Context, instanceID, key string) error
+	DeleteExpired(ctx context.Context, now time.Time) (int64, error)
+}
+
 type ContactRepository interface {
 	Upsert(ctx context.Context, contact model.Contact) error
 	GetByPhone(ctx context.Context, phone string) (model.Contact, error)

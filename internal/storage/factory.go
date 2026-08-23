@@ -23,6 +23,7 @@ type Repositories struct {
 	APIToken     APITokenRepository
 	HistorySync  HistorySyncRepository
 	Contact      ContactRepository
+	Idempotency  IdempotencyRepository
 	RedisClient  *storage_redis.Client
 	WebhookQueue queue.Queue
 	OutboxQueue  queue.Queue
@@ -84,6 +85,7 @@ func NewRepositories(cfg config.Config, log *zap.Logger) (*Repositories, error) 
 			APIToken:     sqlite.NewAPITokenRepository(db),
 			HistorySync:  sqlite.NewHistorySyncRepository(db),
 			Contact:      sqlite.NewContactRepository(db),
+			Idempotency:  sqlite.NewIdempotencyRepository(db),
 			RedisClient:  storeRedis,
 			WebhookQueue: webhookQueue,
 			OutboxQueue:  outboxQueue,
@@ -107,6 +109,7 @@ func NewRepositories(cfg config.Config, log *zap.Logger) (*Repositories, error) 
 			APIToken:     postgres.NewAPITokenRepository(db),
 			HistorySync:  postgres.NewHistorySyncRepository(db),
 			Contact:      postgres.NewContactRepository(db),
+			Idempotency:  postgres.NewIdempotencyRepository(db),
 			RedisClient:  storeRedis,
 			WebhookQueue: webhookQueue,
 			OutboxQueue:  outboxQueue,

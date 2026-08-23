@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: ApiMe
-  version: "1.2.0"
+  version: "1.3.0"
   description: |
     API para orquestração de múltiplas instâncias de WhatsApp.
 
@@ -253,6 +253,7 @@ paths:
       security: [{instanceToken: []}]
       parameters:
         - $ref: "#/components/parameters/instanceId"
+        - $ref: "#/components/parameters/idempotencyKey"
       requestBody:
         required: true
         content:
@@ -270,6 +271,12 @@ paths:
                   type: string
                   description: Message ID (HEX) da mensagem citada
       responses:
+        "409":
+          description: Requisição com a mesma Idempotency-Key ainda em andamento
+        "503":
+          description: Sessão não pronta. Nada foi enviado e a Idempotency-Key é liberada para nova tentativa
+        "422":
+          description: Idempotency-Key já usada com outro conteúdo
         "200":
           description: Enviado
 
@@ -280,6 +287,7 @@ paths:
       security: [{instanceToken: []}]
       parameters:
         - $ref: "#/components/parameters/instanceId"
+        - $ref: "#/components/parameters/idempotencyKey"
       requestBody:
         required: true
         content:
@@ -306,6 +314,12 @@ paths:
                   type: string
                   description: ID da mensagem citada (opcional)
       responses:
+        "409":
+          description: Requisição com a mesma Idempotency-Key ainda em andamento
+        "503":
+          description: Sessão não pronta. Nada foi enviado e a Idempotency-Key é liberada para nova tentativa
+        "422":
+          description: Idempotency-Key já usada com outro conteúdo
         "200":
           description: Enviado
 
@@ -317,6 +331,7 @@ paths:
       security: [{instanceToken: []}]
       parameters:
         - $ref: "#/components/parameters/instanceId"
+        - $ref: "#/components/parameters/idempotencyKey"
       requestBody:
         required: true
         content:
@@ -343,6 +358,12 @@ paths:
                   type: string
                   description: ID da mensagem citada (opcional)
       responses:
+        "409":
+          description: Requisição com a mesma Idempotency-Key ainda em andamento
+        "503":
+          description: Sessão não pronta. Nada foi enviado e a Idempotency-Key é liberada para nova tentativa
+        "422":
+          description: Idempotency-Key já usada com outro conteúdo
         "200":
           description: Enviado
 
@@ -354,6 +375,7 @@ paths:
       security: [{instanceToken: []}]
       parameters:
         - $ref: "#/components/parameters/instanceId"
+        - $ref: "#/components/parameters/idempotencyKey"
       requestBody:
         required: true
         content:
@@ -379,6 +401,12 @@ paths:
                   type: string
                   description: ID da mensagem citada (opcional)
       responses:
+        "409":
+          description: Requisição com a mesma Idempotency-Key ainda em andamento
+        "503":
+          description: Sessão não pronta. Nada foi enviado e a Idempotency-Key é liberada para nova tentativa
+        "422":
+          description: Idempotency-Key já usada com outro conteúdo
         "200":
           description: Enviado
 
@@ -505,6 +533,7 @@ paths:
       security: [{instanceToken: []}]
       parameters:
         - $ref: "#/components/parameters/instanceId"
+        - $ref: "#/components/parameters/idempotencyKey"
       requestBody:
         required: true
         content:
@@ -522,6 +551,12 @@ paths:
                   type: string
                   description: Conteúdo serializado
       responses:
+        "409":
+          description: Requisição com a mesma Idempotency-Key ainda em andamento
+        "503":
+          description: Sessão não pronta. Nada foi enviado e a Idempotency-Key é liberada para nova tentativa
+        "422":
+          description: Idempotency-Key já usada com outro conteúdo
         "200":
           description: Mensagem enfileirada
     get:
@@ -541,6 +576,7 @@ paths:
       security: [{instanceToken: []}]
       parameters:
         - $ref: "#/components/parameters/instanceId"
+        - $ref: "#/components/parameters/idempotencyKey"
       requestBody:
         required: true
         content:
@@ -569,6 +605,12 @@ paths:
                   items:
                     type: string
       responses:
+        "409":
+          description: Requisição com a mesma Idempotency-Key ainda em andamento
+        "503":
+          description: Sessão não pronta. Nada foi enviado e a Idempotency-Key é liberada para nova tentativa
+        "422":
+          description: Idempotency-Key já usada com outro conteúdo
         "200":
           description: Contato enviado
 
@@ -579,6 +621,7 @@ paths:
       security: [{instanceToken: []}]
       parameters:
         - $ref: "#/components/parameters/instanceId"
+        - $ref: "#/components/parameters/idempotencyKey"
       requestBody:
         required: true
         content:
@@ -606,6 +649,12 @@ paths:
                 quotedFromMe:
                   type: boolean
       responses:
+        "409":
+          description: Requisição com a mesma Idempotency-Key ainda em andamento
+        "503":
+          description: Sessão não pronta. Nada foi enviado e a Idempotency-Key é liberada para nova tentativa
+        "422":
+          description: Idempotency-Key já usada com outro conteúdo
         "200":
           description: Localização enviada
 
@@ -1458,6 +1507,18 @@ components:
         Use userJwt, apiToken ou instanceToken conforme o caso.
 
   parameters:
+    idempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      schema:
+        type: string
+        maxLength: 255
+      description: >
+        Chave gerada pelo cliente (UUID v4 serve) que torna seguro repetir o envio.
+        A primeira chamada guarda o resultado por 24h, e uma repetição com a mesma
+        chave devolve o mesmo resultado, com o header X-Idempotent-Replay: true,
+        em vez de mandar a mensagem de novo.
     instanceId:
       name: id
       in: path

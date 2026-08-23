@@ -34,6 +34,7 @@ Baseada na biblioteca [WhatsMeow](https://github.com/tulir/whatsmeow) com dashbo
 |---|---|
 | [docs/dashboard.md](docs/dashboard.md) | interface web, autenticação e rotas de admin |
 | [docs/webhook-payloads.md](docs/webhook-payloads.md) | envelope, assinatura HMAC e os tipos de evento |
+| [docs/idempotency.md](docs/idempotency.md) | repetir envio sem duplicar mensagem |
 | [docs/users.md](docs/users.md) | usuários e tokens |
 | [docs/media.md](docs/media.md) | mídia |
 | [docs/phone-numbers.md](docs/phone-numbers.md) | números e JIDs |

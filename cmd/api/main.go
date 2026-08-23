@@ -22,6 +22,7 @@ import (
 	"github.com/open-apime/apime/internal/server"
 	"github.com/open-apime/apime/internal/service/api_token"
 	"github.com/open-apime/apime/internal/service/auth"
+	"github.com/open-apime/apime/internal/service/idempotency"
 	"github.com/open-apime/apime/internal/service/instance"
 	"github.com/open-apime/apime/internal/service/message"
 	"github.com/open-apime/apime/internal/service/user"
@@ -170,7 +171,12 @@ func main() {
 	logr.Debug("serviços inicializados")
 
 	instanceHandler := instancehandler.NewHandlerWithSession(instanceService, logr, sessionManager)
-	messageHandler := handler.NewMessageHandler(messageService)
+	idempotencyCleaner := idempotency.NewCleaner(repos.Idempotency, logr)
+	idempotencyCleaner.Start(context.Background(), 1*time.Hour)
+	logr.Info("faxina de chaves de idempotência iniciada")
+
+	idempotencyGuard := middleware.Idempotency(repos.Idempotency, logr)
+	messageHandler := handler.NewMessageHandler(messageService, idempotencyGuard)
 	whatsAppHandler := whatsapphandler.NewHandler(sessionManager, messageService)
 	authHandler := handler.NewAuthHandler(authService)
 	apiTokenHandler := handler.NewAPITokenHandler(apiTokenService)
