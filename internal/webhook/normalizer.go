@@ -539,18 +539,23 @@ func (h *EventHandler) normalizeEvent(ctx context.Context, instanceID string, cl
 			sec.GetSecretEncType() == waE2E.SecretEncryptedMessage_MESSAGE_EDIT {
 			if client != nil {
 				if decrypted, err := client.DecryptSecretEncryptedMessage(ctx, evt); err == nil {
-					newText := decrypted.GetConversation()
-					if newText == "" {
-						newText = decrypted.GetExtendedTextMessage().GetText()
-					}
-					if targetKey := sec.GetTargetMessageKey(); targetKey != nil {
+					newText := editedText(decrypted)
+					targetKey := sec.GetTargetMessageKey()
+					// Id and text travel together: emitting the id alone makes the consumer
+					// receive an edit with nothing to apply, and drop it as malformed.
+					if newText != "" && targetKey != nil {
 						result["editedMessageId"] = targetKey.GetID()
-					}
-					if newText != "" {
 						result["editedText"] = newText
 						h.log.Info("edição de mensagem decriptada",
 							zap.String("msg_id", evt.Info.ID),
-							zap.String("target", result["editedMessageId"].(string)))
+							zap.String("target", targetKey.GetID()))
+					} else {
+						// Decrypting worked but nothing was extracted: without this the branch is
+						// blind, and the edit disappears with no trace on either side.
+						h.log.Warn("edição decriptada sem texto aproveitável",
+							zap.String("msg_id", evt.Info.ID),
+							zap.Bool("has_target_key", targetKey != nil),
+							zap.Strings("payload_fields", messageFieldNames(decrypted)))
 					}
 				} else {
 					h.log.Warn("falha ao decriptar edição (secretEncryptedMessage)",
