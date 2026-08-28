@@ -62,6 +62,14 @@ Mensagem recebida (texto, imagem, áudio, vídeo, documento, sticker, contato ou
 | `mimetype`  | Tipo MIME do arquivo                           |
 | `caption`   | Legenda (imagem/vídeo)                         |
 | `buttons`   | Botões, quando a mensagem é interativa (abaixo) |
+| `editedMessageId` | Id da mensagem **original**, quando este evento é uma edição (abaixo) |
+| `editedText` | Novo texto da mensagem editada |
+
+**Edição de mensagem.** O WhatsApp entrega edição como `secretEncryptedMessage` com
+`SecretEncType = MESSAGE_EDIT`, não mais como `protocolMessage` tipo 14. O apime decifra e expõe
+`editedMessageId` (a mensagem que foi editada) e `editedText` (o conteúdo novo). **Os dois vêm
+sempre juntos:** mandar só o id daria ao consumidor uma edição sem nada para aplicar. Não havendo
+os campos, é mensagem comum.
 
 **Botões.** Cada item de `buttons` tem `id`, `label` e `type`, onde `type` vale `reply`, `url`,
 `copy` ou `call`. O de `url` traz `url`, o de `copy` traz `code`, e o de `call` traz `phone`.
