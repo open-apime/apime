@@ -28,6 +28,31 @@ Baseada na biblioteca [WhatsMeow](https://github.com/tulir/whatsmeow) com dashbo
 
 - **API Specification:** `openapi.yaml`
 
+## SDK oficial (Node/TypeScript)
+
+Cliente tipado para quem integra em Node, com retry, verificação de webhook e as 66 operações da
+API: [`@open-apime/sdk`](https://www.npmjs.com/package/@open-apime/sdk).
+
+```bash
+npm install @open-apime/sdk
+```
+
+```ts
+import { Apime } from "@open-apime/sdk";
+
+const conexao = Apime.withInstanceToken(
+  { token: process.env.INSTANCE_TOKEN!, instanceId: "abc-123" },
+  { baseUrl: "https://apime.example.com" },
+);
+
+await conexao.messages.sendText(
+  { to: "5511999999999", text: "Olá" },
+  { idempotencyKey: mensagem.id },
+);
+```
+
+Sem Node, a API é HTTP comum: o `openapi.yaml` descreve tudo.
+
 ## Documentação
 
 | Doc | Assunto |
