@@ -13,7 +13,7 @@ require (
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/lib/pq v1.12.3
 	github.com/mattn/go-sqlite3 v1.14.52
-	github.com/redis/go-redis/v9 v9.22.0
+	github.com/redis/go-redis/v9 v9.23.0
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	go.mau.fi/whatsmeow v0.0.0-20260306150847-8f48ec56ce6c
 	go.uber.org/zap v1.28.0
@@ -59,7 +59,7 @@ require (
 	go.mau.fi/libsignal v0.2.2 // indirect
 	go.mau.fi/util v0.10.1 // indirect
 	go.mongodb.org/mongo-driver/v2 v2.8.0 // indirect
-	go.uber.org/atomic v1.11.0 // indirect
+	go.uber.org/atomic v1.12.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	golang.org/x/arch v0.29.0 // indirect
 	golang.org/x/exp v0.0.0-20260908205506-85c1c2202aba // indirect
