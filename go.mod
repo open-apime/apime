@@ -40,7 +40,7 @@ require (
 	github.com/bytedance/sonic/loader v0.5.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/cloudwego/base64x v0.1.7 // indirect
-	github.com/coder/websocket v1.8.15 // indirect
+	github.com/coder/websocket v1.8.15
 	github.com/elliotchance/orderedmap/v3 v3.1.0 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.13 // indirect
 	github.com/gin-contrib/sse v1.1.1 // indirect
@@ -106,6 +106,6 @@ exclude (
 	github.com/gin-gonic/gin v1.11.0
 )
 
-replace go.mau.fi/whatsmeow => github.com/Whalabs/whatsmeow v0.0.0-20261029224059-ada6e260b1f6
+replace go.mau.fi/whatsmeow => github.com/Whalabs/whatsmeow v0.0.0-20261103011801-7ec47da3f1cb
 
-replace github.com/purpshell/meowcaller => github.com/Whalabs/meowcaller v0.0.0-20261012163950-329a4a7cd7e6
+replace github.com/purpshell/meowcaller => github.com/Whalabs/meowcaller v0.0.0-20261103034253-ffa39f8d3ce3
