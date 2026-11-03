@@ -43,6 +43,8 @@ São 15 tipos entregues ao consumidor. `ignore` existe no código mas é descart
 | `call.offer` | ligação recebida |
 | `call.ended` | ligação encerrada, recusada ou atendida em outro aparelho |
 | `call.state` | mudança de fase da ligação no motor de chamadas (só com `calls_enabled`) |
+| `call.accepted` | ligação atendida (só com `calls_enabled`) |
+| `call.video` | câmera do outro lado ligou, desligou ou pediu vídeo (só com `calls_enabled`) |
 | `unknown` | evento não mapeado |
 
 ---
@@ -202,13 +204,14 @@ ainda não iniciou conversa. Não restringe a conta inteira.
 
 ---
 
-### Chamadas: `call.offer`, `call.ended`, `call.state`
+### Chamadas: `call.offer`, `call.ended`, `call.state`, `call.accepted`, `call.video`
 
-`call.offer` e `call.ended` saem **em toda instância com webhook**, mesmo sem o motor de chamadas,
-para o consumidor registrar a ligação perdida e, se quiser, recusar sozinho. `call.state` só existe
-com `calls_enabled: true` (ver `PUT /instances/{id}`).
+`call.offer` sai **em toda instância com webhook**, mesmo sem o motor de chamadas, para o
+consumidor registrar a ligação e, se quiser, recusar sozinho. Os demais dependem do motor
+(`calls_enabled: true`, ver `PUT /instances/{id}`); sem ele, o fim chega como `call.ended` com o
+motivo cru do WhatsApp.
 
-Campos de `call.offer` e `call.ended`:
+Campos de `call.offer`:
 
 | Campo        | Descrição                                                              |
 |--------------|------------------------------------------------------------------------|
@@ -217,18 +220,33 @@ Campos de `call.offer` e `call.ended`:
 | `lid`        | LID de quem ligou, quando a ligação veio endereçada por LID             |
 | `timestamp`  | quando o servidor do WhatsApp registrou o evento                        |
 | `rejectFrom` | JID a passar em `POST /calls/{callId}/reject` numa instância sem motor  |
+| `isVideo`    | ligação de vídeo                                                        |
+| `platform`   | plataforma do aparelho de quem ligou                                    |
+| `isGroup`    | ligação começada num grupo; `groupJid` diz qual                         |
+| `joinable`   | mais pessoas podem entrar, mesmo fora de grupo                          |
 
-`call.offer` soma `isVideo` e `platform` (plataforma do aparelho de quem ligou).
-`call.ended` soma `reason`: o motivo do servidor, `rejected` quando o outro lado recusou, ou o
-`terminate_reason` quando a ligação foi atendida em outro aparelho (por exemplo, o celular).
+Os eventos do motor trazem `callId`, `from`, `lid`, `direction` (`incoming` ou `outgoing`),
+`state` (`calling`, `ringing`, `connecting`, `active`, `ended`), `startedAt`, `isVideo`, `isGroup`
+e `groupJid`:
 
-`call.state` traz `callId`, `from`, `lid`, `direction` (`incoming` ou `outgoing`), `startedAt`,
-`state` (`calling`, `ringing`, `connecting`, `active`, `ended`) e, no fim, `reason`.
+- `call.state`: cada mudança de fase. O fim também passa aqui, com `state: ended` e `reason`.
+- `call.accepted`: a ligação foi atendida (a feita, pelo outro lado; a recebida, por `answer`).
+- `call.video`: campo `video` com `on`, `off` ou `upgrade_requested` (o outro lado pediu para
+  passar a voz para vídeo; aceite com `POST /calls/{callId}/video` e `action: accept`).
+- `call.ended`: **uma vez por ligação**, com `reason`:
 
-> **Trate os eventos de chamada como idempotentes por `callId`.** Um desligamento do outro lado
-> chega duas vezes: como `call.ended` (do WhatsApp) e como `call.state` com `state: ended` (do
-> motor). O conteúdo bruto do evento (`raw`) **não** é enviado, porque a oferta carrega a chave
-> cifrada da ligação.
+| `reason` | Quando |
+|---|---|
+| `missed` | ninguém atendeu |
+| `rejected` | o outro lado recusou |
+| `rejected_elsewhere` | esta conta recusou em outro aparelho |
+| `accepted_elsewhere` | esta conta atendeu em outro aparelho |
+| `cancelled` | este lado desistiu antes de atenderem |
+| `hangup` | encerrada depois de atendida |
+| `group_call_ended` | a ligação de grupo acabou |
+
+> Trate os eventos de chamada como idempotentes por `callId`. O conteúdo bruto do evento (`raw`)
+> **não** é enviado, porque a oferta carrega a chave cifrada da ligação.
 
 ---
 

@@ -757,6 +757,9 @@ paths:
                 to:
                   type: string
                   description: telefone (+5511...), JID de telefone ou JID @lid
+                video:
+                  type: boolean
+                  description: liga com vídeo; a câmera passa pela ponte de mídia
       responses:
         "201":
           description: Oferta enviada
@@ -855,6 +858,67 @@ paths:
           description: Recusada
         "404":
           description: Ligação não encontrada e `from` ausente
+
+  /instances/{id}/calls/{callId}/video:
+    post:
+      summary: Controlar o vídeo da ligação
+      description: |
+        `start` pede para passar a ligação de voz para vídeo, `accept` aceita o pedido do outro
+        lado (webhook `call.video` com `video: upgrade_requested`), `stop` encerra o vídeo deste
+        lado, `pause` e `resume` desligam e religam a câmera sem sair do vídeo.
+      tags: [Chamadas]
+      security: [{instanceToken: []}]
+      parameters:
+        - $ref: "#/components/parameters/instanceId"
+        - $ref: "#/components/parameters/callId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action]
+              properties:
+                action:
+                  type: string
+                  enum: [start, accept, stop, pause, resume]
+      responses:
+        "200":
+          description: Aplicado
+        "400":
+          description: Ação inválida
+        "404":
+          description: Ligação não encontrada
+        "409":
+          description: Chamadas desativadas nesta instância
+
+  /instances/{id}/calls/{callId}/media:
+    get:
+      summary: Ponte de mídia da ligação (WebSocket)
+      description: |
+        Upgrade para WebSocket com a mídia nos dois sentidos. Para o backend do consumidor, que
+        guarda o token da instância; o navegador chega por ele, nunca com o token.
+
+        Mensagem binária: o primeiro byte diz o tipo. `1` é áudio PCM16LE mono 16 kHz (em
+        qualquer tamanho de bloco ao enviar), `2` é um access unit H.264 Annex-B.
+
+        Mensagem de texto: `{"type":"orientation","value":n}`, os quartos de volta no sentido
+        horário que deixam o vídeo em pé. O apime manda quando a câmera do outro lado gira, e o
+        consumidor manda para anunciar a sua.
+
+        Uma ponte nova na mesma ligação substitui a anterior.
+      tags: [Chamadas]
+      security: [{instanceToken: []}]
+      parameters:
+        - $ref: "#/components/parameters/instanceId"
+        - $ref: "#/components/parameters/callId"
+      responses:
+        "101":
+          description: WebSocket aberto
+        "404":
+          description: Ligação não encontrada
+        "409":
+          description: Chamadas desativadas nesta instância
 
   /instances/{id}/whatsapp/check:
     post:
@@ -1905,3 +1969,8 @@ components:
         startedAt:
           type: string
           format: date-time
+        isVideo:
+          type: boolean
+        groupJid:
+          type: string
+          description: presente quando a ligação começou num grupo
