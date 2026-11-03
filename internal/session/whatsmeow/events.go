@@ -36,6 +36,11 @@ func (m *Manager) handleEvent(instanceID string, evt any) {
 			// sync (incl. the WhatsApp @username, 2026). Call events go out even on instances
 			// without the VoIP engine, so the consumer can log a missed call. Without forwarding
 			// these, the normalizeEvent that handles them would be dead code.
+			// With the engine installed, it reports the end of every call once, with a
+			// normalized reason; forwarding these too sent each end twice.
+			if m.engineEndsCall(instanceID, evt) {
+				break
+			}
 			go handler.Handle(context.Background(), instanceID, instanceJID, client, evt)
 		}
 	}
@@ -60,7 +65,8 @@ func (m *Manager) handleEvent(instanceID string, evt any) {
 				// Signal session: resetting session/identity by the group JID corrupts the
 				// group's encryption state (sender keys) and stops receiving messages from
 				// the other members. The correct reset target is the participant (receipt.Sender).
-				if receipt.Chat.Server == types.GroupServer {
+				// A broadcast list (@broadcast) is the same case: one member asked, not the list.
+				if receipt.Chat.Server == types.GroupServer || receipt.Chat.Server == types.BroadcastServer {
 					if receipt.Sender.IsEmpty() {
 						m.log.Warn("retry receipt em grupo sem sender identificável - ignorando reset para não corromper sender keys do grupo",
 							zap.String("instance_id", instanceID),

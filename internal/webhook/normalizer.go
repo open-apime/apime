@@ -116,6 +116,11 @@ func (h *EventHandler) normalizeEvent(ctx context.Context, instanceID string, cl
 
 	switch evt := evt.(type) {
 	case *events.Message:
+		// The phone's history-sync pointer is internal plumbing, not a chat message.
+		if evt.Message.GetProtocolMessage().GetHistorySyncNotification() != nil {
+			result["type"] = "ignore"
+			return result
+		}
 		if reaction := evt.Message.GetReactionMessage(); reaction != nil {
 			result["type"] = "reaction"
 

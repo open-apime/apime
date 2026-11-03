@@ -11,6 +11,7 @@ import (
 	"github.com/rs/zerolog"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/types"
+	"go.mau.fi/whatsmeow/types/events"
 	"go.uber.org/zap"
 
 	"github.com/open-apime/apime/internal/voip"
@@ -22,12 +23,29 @@ type callEngine struct {
 	wa     *whatsmeow.Client
 	mu     sync.Mutex
 	calls  map[string]*trackedCall
+	// endHints holds what whatsmeow told us about how a call ended before the engine
+	// closes it (the engine only sees "rejected" for a decline made on the phone).
+	endHints map[string]string
+	offers   map[string]offerMeta
+}
+
+type offerMeta struct {
+	video bool
+	group string
 }
 
 type trackedCall struct {
 	call      *meowcaller.Call
 	direction string
 	startedAt time.Time
+	isVideo   bool
+	groupJID  string
+
+	mu        sync.Mutex
+	active    bool
+	localEnd  bool // this side hung up or declined through the API
+	ended     bool
+	lastVideo string
 }
 
 // attachCalls installs the engine on a client that has not connected yet. It must run
@@ -49,9 +67,23 @@ func (m *Manager) attachCalls(ctx context.Context, instanceID string, client *wh
 		client: meowcaller.NewClient(client, meowcaller.WithLogger(logger)),
 		wa:     client,
 		calls:  make(map[string]*trackedCall),
+
+		endHints: make(map[string]string),
+		offers:   make(map[string]offerMeta),
 	}
 	eng.client.OnIncomingCall(func(call *meowcaller.Call) {
 		m.trackCall(instanceID, eng, call, voip.DirectionIncoming)
+	})
+	// Runs ahead of the engine's own handler, which is added after this one.
+	client.AddEventHandler(func(evt any) {
+		switch e := evt.(type) {
+		case *events.CallOffer:
+			eng.noteOffer(e)
+		case *events.CallReject:
+			if own := client.Store.GetLID(); !own.IsEmpty() && e.From.User == own.User {
+				eng.hint(e.CallID, voip.ReasonRejectedElsewhere)
+			}
+		}
 	})
 
 	m.voipMu.Lock()
@@ -90,25 +122,60 @@ func (m *Manager) callEngineFor(instanceID string) (*callEngine, error) {
 	return eng, nil
 }
 
-func (m *Manager) trackCall(instanceID string, eng *callEngine, call *meowcaller.Call, direction string) {
+func (m *Manager) trackCall(instanceID string, eng *callEngine, call *meowcaller.Call, direction string) *trackedCall {
 	tc := &trackedCall{call: call, direction: direction, startedAt: time.Now()}
 	eng.mu.Lock()
 	eng.calls[call.ID()] = tc
 	eng.mu.Unlock()
 
+	tc.isVideo, tc.groupJID = eng.offerInfo(call.ID())
+	call.OnVideoState(func(v meowcaller.VideoState) {
+		if v.Active {
+			tc.mu.Lock()
+			tc.isVideo = true
+			tc.mu.Unlock()
+		}
+		m.emitVideoState(instanceID, eng, tc, v)
+	})
 	call.OnStateChange(func(phase meowcaller.CallPhase) {
-		m.emitCallState(instanceID, eng, tc, phaseName(phase), "")
+		// The end is reported once, by OnEnd, with its reason.
+		if phase == meowcaller.CallPhaseEnded {
+			return
+		}
+		m.emitCallState(instanceID, eng, tc, voip.KindState, phaseName(phase), "")
+		if phase == meowcaller.CallPhaseActive {
+			tc.mu.Lock()
+			first := !tc.active
+			tc.active = true
+			tc.mu.Unlock()
+			if first {
+				m.emitCallState(instanceID, eng, tc, voip.KindAccepted, "active", "")
+			}
+		}
 	})
 	call.OnEnd(func(reason string) {
+		tc.mu.Lock()
+		if tc.ended {
+			tc.mu.Unlock()
+			return
+		}
+		tc.ended = true
+		tc.mu.Unlock()
 		eng.mu.Lock()
 		delete(eng.calls, call.ID())
+		hint := eng.endHints[call.ID()]
+		delete(eng.endHints, call.ID())
+		delete(eng.offers, call.ID())
 		eng.mu.Unlock()
-		m.emitCallState(instanceID, eng, tc, "ended", reason)
+		reason = endReason(tc, reason, hint)
+		m.emitCallState(instanceID, eng, tc, voip.KindState, "ended", reason)
+		m.emitCallState(instanceID, eng, tc, voip.KindEnded, "ended", reason)
 	})
-	m.emitCallState(instanceID, eng, tc, phaseName(call.State()), "")
+	m.emitCallState(instanceID, eng, tc, voip.KindState, phaseName(call.State()), "")
+	return tc
 }
 
-func (m *Manager) emitCallState(instanceID string, eng *callEngine, tc *trackedCall, state, reason string) {
+func (m *Manager) emitCallState(instanceID string, eng *callEngine, tc *trackedCall, kind, state, reason string) {
 	m.mu.RLock()
 	handler := m.eventHandler
 	m.mu.RUnlock()
@@ -119,7 +186,7 @@ func (m *Manager) emitCallState(instanceID string, eng *callEngine, tc *trackedC
 	if eng.wa.Store != nil && eng.wa.Store.ID != nil {
 		jid = eng.wa.Store.ID.String()
 	}
-	evt := &voip.StateEvent{Call: snapshot(tc, state), Reason: reason}
+	evt := &voip.StateEvent{Call: snapshot(tc, state), Kind: kind, Reason: reason}
 	go handler.Handle(context.Background(), instanceID, jid, eng.wa, evt)
 }
 
@@ -130,6 +197,8 @@ func snapshot(tc *trackedCall, state string) voip.Call {
 		Direction: tc.direction,
 		State:     state,
 		StartedAt: tc.startedAt,
+		IsVideo:   tc.isVideo,
+		GroupJID:  tc.groupJID,
 	}
 }
 
@@ -150,15 +219,18 @@ func phaseName(p meowcaller.CallPhase) string {
 	}
 }
 
-func (m *Manager) StartCall(ctx context.Context, instanceID, to string) (voip.Call, error) {
+func (m *Manager) StartCall(ctx context.Context, instanceID, to string, video bool) (voip.Call, error) {
 	eng, err := m.callEngineFor(instanceID)
 	if err != nil {
 		return voip.Call{}, err
 	}
-	call, err := eng.client.Call(ctx, to)
+	call, err := eng.client.CallWithOptions(ctx, to, meowcaller.CallOptions{Video: video})
 	if err != nil {
 		return voip.Call{}, err
 	}
+	eng.mu.Lock()
+	eng.offers[call.ID()] = offerMeta{video: video}
+	eng.mu.Unlock()
 	m.trackCall(instanceID, eng, call, voip.DirectionOutgoing)
 	return m.GetCall(instanceID, call.ID())
 }
@@ -190,7 +262,19 @@ func (m *Manager) AnswerCall(instanceID, callID string) error {
 	if err != nil {
 		return err
 	}
-	return tc.call.Answer()
+	if err := tc.call.Answer(); err != nil {
+		return err
+	}
+	// Answered counts from the accept: the engine only turns a call active on the
+	// caller's first audio, which may never come.
+	tc.mu.Lock()
+	first := !tc.active
+	tc.active = true
+	tc.mu.Unlock()
+	if eng, err := m.callEngineFor(instanceID); err == nil && first {
+		m.emitCallState(instanceID, eng, tc, voip.KindAccepted, "active", "")
+	}
+	return nil
 }
 
 func (m *Manager) HangupCall(instanceID, callID string) error {
@@ -198,6 +282,7 @@ func (m *Manager) HangupCall(instanceID, callID string) error {
 	if err != nil {
 		return err
 	}
+	tc.markLocalEnd()
 	return tc.call.Hangup()
 }
 
@@ -206,6 +291,7 @@ func (m *Manager) HangupCall(instanceID, callID string) error {
 // that path needs the caller JID from the call.offer webhook.
 func (m *Manager) RejectCall(ctx context.Context, instanceID, callID, from string) error {
 	if tc, err := m.lookupCall(instanceID, callID); err == nil {
+		tc.markLocalEnd()
 		return tc.call.Reject()
 	}
 	if strings.TrimSpace(from) == "" {
@@ -268,4 +354,137 @@ type zerologToZap struct {
 func (w zerologToZap) Write(p []byte) (int, error) {
 	w.log.Info("meowcaller", zap.String("instance_id", w.instanceID), zap.ByteString("event", p))
 	return len(p), nil
+}
+
+func (tc *trackedCall) markLocalEnd() {
+	tc.mu.Lock()
+	tc.localEnd = true
+	tc.mu.Unlock()
+}
+
+func (e *callEngine) hint(callID, reason string) {
+	e.mu.Lock()
+	e.endHints[callID] = reason
+	e.mu.Unlock()
+}
+
+func (e *callEngine) noteOffer(ev *events.CallOffer) {
+	meta := offerMeta{group: ev.GroupJID.String()}
+	if ev.GroupJID.IsEmpty() {
+		meta.group = ""
+	}
+	if ev.Data != nil {
+		_, meta.video = ev.Data.GetOptionalChildByTag("video")
+		if meta.group == "" {
+			if g := ev.Data.AttrGetter().OptionalJIDOrEmpty("group-jid"); !g.IsEmpty() {
+				meta.group = g.String()
+			}
+		}
+	}
+	e.mu.Lock()
+	e.offers[ev.CallID] = meta
+	e.mu.Unlock()
+}
+
+func (e *callEngine) offerInfo(callID string) (bool, string) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	meta := e.offers[callID]
+	return meta.video, meta.group
+}
+
+// endReason maps how WhatsApp and the engine ended a call to the reasons consumers get.
+// An empty reason means a hangup after an answer, or a call nobody answered: cancelled
+// when this side gave up, missed otherwise.
+func endReason(tc *trackedCall, raw, hint string) string {
+	if hint != "" {
+		return hint
+	}
+	switch raw {
+	case voip.ReasonAcceptedElsewhere, voip.ReasonRejectedElsewhere, voip.ReasonGroupCallEnded, voip.ReasonRejected:
+		return raw
+	}
+	tc.mu.Lock()
+	active, local := tc.active, tc.localEnd
+	tc.mu.Unlock()
+	switch {
+	case active:
+		return voip.ReasonHangup
+	case local:
+		return voip.ReasonCancelled
+	}
+	return voip.ReasonMissed
+}
+
+// engineEndsCall reports whether a whatsmeow call event is an end the engine already
+// turns into call.ended.
+func (m *Manager) engineEndsCall(instanceID string, evt any) bool {
+	m.voipMu.Lock()
+	installed := m.voip[instanceID] != nil
+	m.voipMu.Unlock()
+	if !installed {
+		return false
+	}
+	switch e := evt.(type) {
+	case *events.CallTerminate, *events.CallReject:
+		return true
+	case *events.CallOffer:
+		if e.Data == nil {
+			return false
+		}
+		ag := e.Data.AttrGetter()
+		return ag.OptionalString("is_call_ended") == "1" || ag.OptionalString("terminate_reason") != ""
+	}
+	return false
+}
+
+// emitVideoState reports the peer's camera: on, off, or asking to turn an audio call
+// into a video one (answered with VideoCall "accept").
+func (m *Manager) emitVideoState(instanceID string, eng *callEngine, tc *trackedCall, v meowcaller.VideoState) {
+	state := "off"
+	switch {
+	case v.Upgrade:
+		state = "upgrade_requested"
+	case v.Active:
+		state = "on"
+	}
+	// The peer repeats its state on every transition; only changes are worth a webhook.
+	tc.mu.Lock()
+	same := tc.lastVideo == state
+	tc.lastVideo = state
+	tc.mu.Unlock()
+	if same {
+		return
+	}
+	m.emitCallState(instanceID, eng, tc, voip.KindVideo, phaseName(tc.call.State()), state)
+}
+
+// VideoCall changes this side's video: "start" asks to turn an audio call into video,
+// "accept" takes the peer's request, "stop" ends this side's video, "pause" and
+// "resume" mute the camera without leaving video.
+func (m *Manager) VideoCall(instanceID, callID, action string) error {
+	tc, err := m.lookupCall(instanceID, callID)
+	if err != nil {
+		return err
+	}
+	switch action {
+	case "start":
+		err = tc.call.StartVideo()
+	case "accept":
+		err = tc.call.AcceptVideo()
+	case "stop":
+		err = tc.call.StopVideo()
+	case "pause":
+		err = tc.call.SetVideoEnabled(false)
+	case "resume":
+		err = tc.call.SetVideoEnabled(true)
+	default:
+		return voip.ErrInvalidVideoAction
+	}
+	if err == nil && (action == "start" || action == "accept") {
+		tc.mu.Lock()
+		tc.isVideo = true
+		tc.mu.Unlock()
+	}
+	return err
 }

@@ -78,6 +78,8 @@ func (h *Handler) Register(r *gin.RouterGroup) {
 	r.POST("/instances/:id/calls/:callId/answer", h.answerCall)
 	r.POST("/instances/:id/calls/:callId/reject", h.rejectCall)
 	r.DELETE("/instances/:id/calls/:callId", h.hangupCall)
+	r.POST("/instances/:id/calls/:callId/video", h.videoCall)
+	r.GET("/instances/:id/calls/:callId/media", h.callMedia)
 }
 
 func (h *Handler) requireInstanceToken(c *gin.Context) (string, bool) {

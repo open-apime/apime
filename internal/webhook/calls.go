@@ -30,6 +30,21 @@ func (h *EventHandler) normalizeCall(ctx context.Context, client *whatsmeow.Clie
 		result["type"] = "call.offer"
 		result["isVideo"] = isVideo
 		result["platform"] = evt.RemotePlatform
+		group := evt.GroupJID
+		joinable := false
+		if evt.Data != nil {
+			ag := evt.Data.AttrGetter()
+			if group.IsEmpty() {
+				group = ag.OptionalJIDOrEmpty("group-jid")
+			}
+			joinable = ag.OptionalString("joinable") == "1"
+		}
+		result["isGroup"] = !group.IsEmpty()
+		if !group.IsEmpty() {
+			result["groupJid"] = group.String()
+		}
+		// A call more people can join, even when not started from a group.
+		result["joinable"] = joinable
 		return result, true
 	case *events.CallTerminate:
 		result := h.callMeta(ctx, client, evt.BasicCallMeta)
@@ -39,16 +54,33 @@ func (h *EventHandler) normalizeCall(ctx context.Context, client *whatsmeow.Clie
 	case *events.CallReject:
 		result := h.callMeta(ctx, client, evt.BasicCallMeta)
 		result["type"] = "call.ended"
-		result["reason"] = "rejected"
+		result["reason"] = voip.ReasonRejected
+		if own := client.Store.GetLID(); !own.IsEmpty() && evt.From.User == own.User {
+			result["reason"] = voip.ReasonRejectedElsewhere
+		}
 		return result, true
 	case *voip.StateEvent:
+		kind := "call.state"
+		switch evt.Kind {
+		case voip.KindEnded:
+			kind = "call.ended"
+		case voip.KindAccepted:
+			kind = "call.accepted"
+		case voip.KindVideo:
+			kind = "call.video"
+		}
 		result := map[string]interface{}{
-			"type":      "call.state",
+			"type":      kind,
 			"callId":    evt.ID,
 			"from":      evt.Peer,
 			"direction": evt.Direction,
 			"state":     evt.State,
 			"startedAt": evt.StartedAt,
+			"isVideo":   evt.IsVideo,
+			"isGroup":   evt.GroupJID != "",
+		}
+		if evt.GroupJID != "" {
+			result["groupJid"] = evt.GroupJID
 		}
 		if peer, err := types.ParseJID(evt.Peer); err == nil {
 			if pn := h.resolvePNFromStore(ctx, client, peer); !pn.IsEmpty() {
@@ -56,7 +88,9 @@ func (h *EventHandler) normalizeCall(ctx context.Context, client *whatsmeow.Clie
 				result["lid"] = peer.ToNonAD().String()
 			}
 		}
-		if evt.Reason != "" {
+		if evt.Kind == voip.KindVideo {
+			result["video"] = evt.Reason
+		} else if evt.Reason != "" {
 			result["reason"] = evt.Reason
 		}
 		return result, true
