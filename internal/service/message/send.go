@@ -225,6 +225,16 @@ func (s *Service) Send(ctx context.Context, input SendInput) (model.Message, err
 
 	time.Sleep(1500 * time.Millisecond)
 
+	// The wait above can take a minute, and a reconnect in the meantime swaps the session's client.
+	// Sending through the old one failed with "failed to refresh media connections" (02/11/2026).
+	if fresh, ferr := s.sessionMgr.GetClient(input.InstanceID); ferr == nil && fresh != nil {
+		client = fresh
+	}
+	// A socket that is down only for a moment is the retry loop's job, which waits for it.
+	if !client.IsLoggedIn() {
+		return model.Message{}, ErrInstanceNotConnected
+	}
+
 	toJID, err := s.ResolveJID(ctx, client, input.To)
 	if err != nil {
 		// Propagated without the recipient prefix: the handler picks the status from them, and
@@ -878,7 +888,14 @@ func (s *Service) Send(ctx context.Context, input SendInput) (model.Message, err
 				deadline = waitDeadline
 			}
 			start := time.Now()
-			if !waitUntilConnected(ctx, func() bool { return client.IsConnected() && client.IsLoggedIn() }, deadline) {
+			// A reconnect may hand the session a new client; waiting on the old one never ends.
+			live := func() bool {
+				if fresh, ferr := s.sessionMgr.GetClient(input.InstanceID); ferr == nil && fresh != nil {
+					client = fresh
+				}
+				return client.IsConnected() && client.IsLoggedIn()
+			}
+			if !waitUntilConnected(ctx, live, deadline) {
 				s.log.Warn("socket did not come back in time, giving up on the send",
 					zap.String("instance_id", input.InstanceID),
 					zap.String("to", toJID.String()),

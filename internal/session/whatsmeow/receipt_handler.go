@@ -2,6 +2,7 @@ package whatsmeow
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"time"
 
@@ -161,6 +162,12 @@ func (d *MessageStuckDetector) checkStuckMessages(ctx context.Context) {
 			isStuck := (msg.Status == "sent" || msg.Status == "retry" || msg.Status == "delivered") && time.Since(msg.CreatedAt) > d.stuckTimeout
 
 			isRetry := msg.Status == "retry"
+
+			// Groups and broadcast lists have no session of their own to reset, and a list
+			// copy waits on members who never saved the number.
+			if strings.HasSuffix(msg.To, "@g.us") || strings.HasSuffix(msg.To, "@broadcast") {
+				continue
+			}
 
 			if isStuck || isRetry {
 				resetKey := instanceID + ":" + msg.To
