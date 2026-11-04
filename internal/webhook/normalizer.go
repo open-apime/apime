@@ -604,6 +604,18 @@ func (h *EventHandler) normalizeEvent(ctx context.Context, instanceID string, cl
 		result["isGroup"] = evt.IsGroup
 		if !evt.Sender.IsEmpty() {
 			result["from"] = evt.Sender.String()
+			// A list receipt names the member by LID only; the consumer matches its copy by phone,
+			// so resolve it the way message and call webhooks do and keep the LID alongside.
+			if evt.Sender.Server == types.HiddenUserServer {
+				result["lid"] = evt.Sender.ToNonAD().String()
+				pn := evt.SenderAlt
+				if pn.Server != types.DefaultUserServer {
+					pn = h.resolvePNFromStore(ctx, client, evt.Sender)
+				}
+				if !pn.IsEmpty() {
+					result["from"] = pn.ToNonAD().String()
+				}
+			}
 		}
 		if !evt.MessageSender.IsEmpty() {
 			result["messageSender"] = evt.MessageSender.String()
