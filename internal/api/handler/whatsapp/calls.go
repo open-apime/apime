@@ -74,7 +74,18 @@ func (h *Handler) startCall(c *gin.Context) {
 		response.Error(c, http.StatusBadRequest, err)
 		return
 	}
-	call, err := cm.StartCall(c.Request.Context(), instanceID, strings.TrimSpace(req.To), req.Video)
+	// Same resolution as a sent message (9th-digit variants, LID, cache): the raw number failed
+	// for Brazilian mobiles that WhatsApp knows in the other form.
+	to := strings.TrimSpace(req.To)
+	if client, err := h.sessionManager.GetClient(instanceID); err == nil && client != nil {
+		jid, err := h.messageService.ResolveJID(c.Request.Context(), client, strings.TrimPrefix(to, "+"))
+		if err != nil {
+			response.Error(c, http.StatusBadRequest, err)
+			return
+		}
+		to = jid.String()
+	}
+	call, err := cm.StartCall(c.Request.Context(), instanceID, to, req.Video)
 	if err != nil {
 		callError(c, err)
 		return
