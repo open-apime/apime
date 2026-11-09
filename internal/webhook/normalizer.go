@@ -579,6 +579,9 @@ func (h *EventHandler) normalizeEvent(ctx context.Context, instanceID string, cl
 					if newText != "" && targetKey != nil {
 						result["editedMessageId"] = targetKey.GetID()
 						result["editedText"] = newText
+						if mentions := editedMentions(decrypted); len(mentions) > 0 {
+							result["editedMentionedJids"] = mentions
+						}
 						h.log.Info("edição de mensagem decriptada",
 							zap.String("msg_id", evt.Info.ID),
 							zap.String("target", targetKey.GetID()))

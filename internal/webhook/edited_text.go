@@ -41,6 +41,28 @@ func unwrapEdited(msg *waE2E.Message) *waE2E.Message {
 	return msg
 }
 
+// editedMentions returns the JIDs the edited text mentions, so the consumer can name them as it
+// does on a new message instead of showing the raw number.
+func editedMentions(decrypted *waE2E.Message) []string {
+	msg := unwrapEdited(decrypted)
+	if msg == nil {
+		return nil
+	}
+	if ctx := msg.GetExtendedTextMessage().GetContextInfo(); ctx != nil {
+		return ctx.GetMentionedJID()
+	}
+	if ctx := imageOf(msg).GetContextInfo(); ctx != nil {
+		return ctx.GetMentionedJID()
+	}
+	if ctx := msg.GetVideoMessage().GetContextInfo(); ctx != nil {
+		return ctx.GetMentionedJID()
+	}
+	if ctx := msg.GetDocumentMessage().GetContextInfo(); ctx != nil {
+		return ctx.GetMentionedJID()
+	}
+	return nil
+}
+
 // editedText returns the new content of an edit, empty when there is none to apply.
 //
 // Editing a caption is as common as editing text, and both arrive through this
