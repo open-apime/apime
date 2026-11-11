@@ -8,6 +8,7 @@ import (
 	"go.mau.fi/whatsmeow/types"
 
 	"github.com/open-apime/apime/internal/pkg/response"
+	"github.com/open-apime/apime/internal/pkg/userinfo"
 )
 
 func (h *Handler) listContacts(c *gin.Context) {
@@ -134,7 +135,7 @@ func (h *Handler) getUserInfo(c *gin.Context) {
 		response.ErrorWithMessage(c, http.StatusNotFound, "usuário não encontrado")
 		return
 	}
-	response.Success(c, http.StatusOK, info)
+	response.Success(c, http.StatusOK, userinfo.New(info))
 }
 
 type getContactQRLinkRequest struct {

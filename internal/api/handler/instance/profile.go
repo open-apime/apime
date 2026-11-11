@@ -12,6 +12,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/open-apime/apime/internal/pkg/response"
+	"github.com/open-apime/apime/internal/pkg/userinfo"
 	"github.com/open-apime/apime/internal/storage/model"
 )
 
@@ -145,7 +146,7 @@ func (h *Handler) getProfile(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, http.StatusOK, userInfo)
+	response.Success(c, http.StatusOK, userinfo.New(userInfo))
 }
 
 func (h *Handler) getBusinessProfile(c *gin.Context) {

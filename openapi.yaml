@@ -512,7 +512,7 @@ paths:
           description: JID do contato
       responses:
         "200":
-          description: Dados do perfil
+          description: "Dados do perfil. Conta business verificada traz também businessName, o nome verificado."
 
   /instances/{id}/business/{jid}:
     get:
@@ -1014,7 +1014,7 @@ paths:
             type: string
       responses:
         "200":
-          description: Dados
+          description: "Dados públicos do usuário. Conta business verificada traz também businessName, o nome verificado."
         "403":
           description: Token não é da instância, ou não é token de instância
 
