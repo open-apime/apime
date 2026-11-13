@@ -420,22 +420,35 @@ func endReason(tc *trackedCall, raw, hint string) string {
 // turns into call.ended.
 func (m *Manager) engineEndsCall(instanceID string, evt any) bool {
 	m.voipMu.Lock()
-	installed := m.voip[instanceID] != nil
+	eng := m.voip[instanceID]
 	m.voipMu.Unlock()
-	if !installed {
+	if eng == nil {
 		return false
 	}
+	var callID string
 	switch e := evt.(type) {
-	case *events.CallTerminate, *events.CallReject:
-		return true
+	case *events.CallTerminate:
+		callID = e.CallID
+	case *events.CallReject:
+		callID = e.CallID
 	case *events.CallOffer:
 		if e.Data == nil {
 			return false
 		}
 		ag := e.Data.AttrGetter()
-		return ag.OptionalString("is_call_ended") == "1" || ag.OptionalString("terminate_reason") != ""
+		if ag.OptionalString("is_call_ended") != "1" && ag.OptionalString("terminate_reason") == "" {
+			return false
+		}
+		callID = e.CallID
+	default:
+		return false
 	}
-	return false
+	// A call the engine never tracked (e.g. its key failed to decrypt) gets no OnEnd, so the
+	// whatsmeow end is the only one there is: suppressing it leaves the call ringing forever.
+	eng.mu.Lock()
+	_, tracked := eng.calls[callID]
+	eng.mu.Unlock()
+	return tracked
 }
 
 // emitVideoState reports the peer's camera: on, off, or asking to turn an audio call
