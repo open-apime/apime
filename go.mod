@@ -6,11 +6,11 @@ require (
 	github.com/caarlos0/env/v10 v10.0.0
 	github.com/getsentry/sentry-go v0.50.0
 	github.com/getsentry/sentry-go/gin v0.50.0
-	github.com/gin-contrib/cors v1.7.10
+	github.com/gin-contrib/cors v1.7.11
 	github.com/gin-gonic/gin v1.12.0
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0
-	github.com/jackc/pgx/v5 v5.12.0
+	github.com/jackc/pgx/v5 v5.13.0
 	github.com/lib/pq v1.12.3
 	github.com/mattn/go-sqlite3 v1.14.53
 	github.com/redis/go-redis/v9 v9.23.0
