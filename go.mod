@@ -106,6 +106,6 @@ exclude (
 	github.com/gin-gonic/gin v1.11.0
 )
 
-replace go.mau.fi/whatsmeow => github.com/Whalabs/whatsmeow v0.0.0-20261117011638-6a9f3f62eb43
+replace go.mau.fi/whatsmeow => github.com/Whalabs/whatsmeow v0.0.0-20261125181845-5379b31c77d6
 
 replace github.com/purpshell/meowcaller => github.com/Whalabs/meowcaller v0.0.0-20261103034253-ffa39f8d3ce3
